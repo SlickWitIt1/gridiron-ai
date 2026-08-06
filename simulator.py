@@ -1,7 +1,4 @@
-from loader import load_players
-from draft_board import DraftBoard
-from draft_engine import DraftEngine
-from league import League
+from simulation import Simulation
 
 
 def main():
@@ -10,23 +7,14 @@ def main():
     print(" Taylor Draft Simulator")
     print("===================================")
 
-    print("\nLoading players...")
+    simulation = Simulation()
 
-    players = load_players()
+    simulation.run()
 
-    print(f"Loaded {len(players)} players.")
+    print("\nFINAL ROSTERS")
 
-    board = DraftBoard(players)
+    for team in simulation.league.teams:
 
-    league = League()
-
-    engine = DraftEngine(league, board)
-
-    engine.run()
-
-    print("\n\nFINAL ROSTERS")
-
-    for team in league.teams:
         team.print_roster()
 
 
