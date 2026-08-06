@@ -1,8 +1,12 @@
 from dataclasses import dataclass
 
+from availability_engine import AvailabilityEngine
 from lineup_optimizer import LineupOptimizer
 from loader import load_players
-from preferences import load_my_guys, normalize_name
+from preferences import (
+    load_my_guys,
+    normalize_name,
+)
 from projection_loader import load_projections
 from simulation import Simulation
 
@@ -21,9 +25,14 @@ class MonteCarloResults:
     average_roster_rank: float
     average_surplus: float
 
+    availability_history: dict[
+        str,
+        tuple[int, ...],
+    ]
+
 
 class MonteCarloRunner:
-    def __init__(self):
+    def __init__(self) -> None:
         self.players = load_players()
         self.approved_players = load_my_guys()
         self.projections = load_projections()
@@ -53,16 +62,24 @@ class MonteCarloRunner:
         roster_rank_totals: list[float] = []
         surplus_totals: list[float] = []
 
+        availability = AvailabilityEngine()
+
         for seed in range(simulations):
             simulation = Simulation(
                 user_team_number=draft_slot,
                 seed=seed,
                 players=self.players,
-                approved_players=self.approved_players,
+                approved_players=(
+                    self.approved_players
+                ),
             )
 
             engine = simulation.run(
                 print_picks=False
+            )
+
+            availability.record_draft(
+                engine.draft_results
             )
 
             team = simulation.league.teams[
@@ -93,8 +110,10 @@ class MonteCarloRunner:
 
             user_picks = [
                 draft_pick
-                for draft_pick in engine.draft_results
-                if draft_pick.team_number == draft_slot
+                for draft_pick
+                in engine.draft_results
+                if draft_pick.team_number
+                == draft_slot
             ]
 
             total_surplus = sum(
@@ -126,30 +145,41 @@ class MonteCarloRunner:
         return MonteCarloResults(
             draft_slot=draft_slot,
             simulations=simulations,
+
             average_starter_projection=(
                 sum(starter_totals)
                 / len(starter_totals)
             ),
+
             best_starter_projection=max(
                 starter_totals
             ),
+
             worst_starter_projection=min(
                 starter_totals
             ),
+
             average_roster_projection=(
                 sum(roster_totals)
                 / len(roster_totals)
             ),
+
             average_my_guys=(
                 sum(my_guys_totals)
                 / len(my_guys_totals)
             ),
+
             average_roster_rank=(
                 sum(roster_rank_totals)
                 / len(roster_rank_totals)
             ),
+
             average_surplus=(
                 sum(surplus_totals)
                 / len(surplus_totals)
+            ),
+
+            availability_history=(
+                availability.export_history()
             ),
         )

@@ -1,9 +1,19 @@
 from time import perf_counter
 
-from draft_slot_analyzer import DraftSlotAnalyzer
+from draft_slot_analyzer import (
+    DraftSlotAnalyzer,
+)
 
 
 SIMULATIONS_PER_SLOT = 100
+AVAILABILITY_PICK = 50
+
+PLAYERS_TO_CHECK = (
+    "Josh Allen",
+    "Brock Bowers",
+    "James Cook III",
+    "Tee Higgins",
+)
 
 
 def main() -> None:
@@ -22,10 +32,14 @@ def main() -> None:
     analyzer = DraftSlotAnalyzer()
 
     analysis = analyzer.analyze(
-        simulations_per_slot=SIMULATIONS_PER_SLOT,
+        simulations_per_slot=(
+            SIMULATIONS_PER_SLOT
+        ),
     )
 
-    elapsed_seconds = perf_counter() - start_time
+    elapsed_seconds = (
+        perf_counter() - start_time
+    )
 
     print("\n" + "=" * 103)
     print(" DRAFT SLOT RANKINGS")
@@ -89,6 +103,66 @@ def main() -> None:
         f"{elapsed_seconds:.1f} seconds"
     )
     print("=" * 70)
+
+    print("\n" + "=" * 70)
+    print(
+        f" PLAYER AVAILABILITY AT "
+        f"OVERALL PICK {AVAILABILITY_PICK}"
+    )
+    print("=" * 70)
+
+    print(
+        f"{'Player':<24}"
+        f"{'Avg Pick':>12}"
+        f"{'Drafted':>12}"
+        f"{'Available':>14}"
+    )
+
+    print("-" * 70)
+
+    availability = analysis.availability
+
+    for player_name in PLAYERS_TO_CHECK:
+        average_pick = (
+            availability.average_pick(
+                player_name
+            )
+        )
+
+        draft_rate = (
+            availability.draft_rate(
+                player_name
+            )
+        )
+
+        probability = (
+            availability.probability_available(
+                player_name=player_name,
+                overall_pick=(
+                    AVAILABILITY_PICK
+                ),
+            )
+        )
+
+        average_pick_text = (
+            f"{average_pick:.1f}"
+            if average_pick is not None
+            else "N/A"
+        )
+
+        print(
+            f"{player_name:<24}"
+            f"{average_pick_text:>12}"
+            f"{draft_rate:>11.1%}"
+            f"{probability:>13.1%}"
+        )
+
+    print("-" * 70)
+
+    print(
+        f"Availability database contains "
+        f"{availability.simulations} drafts."
+    )
 
 
 if __name__ == "__main__":
