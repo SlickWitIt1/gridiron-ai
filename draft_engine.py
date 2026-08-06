@@ -1,5 +1,6 @@
-from decision_engine import DecisionEngine
 from draft_board import DraftBoard
+from draft_pick import DraftPick
+from decision_engine import DecisionEngine
 from league import League
 
 
@@ -9,7 +10,10 @@ class DraftEngine:
 
         self.league = league
         self.board = board
+
         self.decision_engine = DecisionEngine()
+
+        self.draft_results = []
 
     def run(self):
 
@@ -19,7 +23,7 @@ class DraftEngine:
 
         overall_pick = 1
 
-        for team_number in self.league.draft_order:
+        for index, team_number in enumerate(self.league.draft_order):
 
             team = self.league.teams[team_number - 1]
 
@@ -32,7 +36,21 @@ class DraftEngine:
                 break
 
             team.add_player(player)
+
             self.board.draft_player(player)
+
+            round_number = (index // self.league.num_teams) + 1
+            pick_in_round = (index % self.league.num_teams) + 1
+
+            self.draft_results.append(
+                DraftPick(
+                    overall=overall_pick,
+                    round=round_number,
+                    pick_in_round=pick_in_round,
+                    team=team_number,
+                    player=player,
+                )
+            )
 
             print(
                 f"Pick {overall_pick:>3} | "
