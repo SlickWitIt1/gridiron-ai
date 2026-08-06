@@ -281,3 +281,100 @@ QLabel#InsightValue {
     color: #e2e8f0;
 }
 """
+
+# Ticket 046: Sleeper-inspired War Room shell.
+DARK_STYLESHEET += """
+QFrame#BrandCard,
+QFrame#OnClockCard,
+QFrame#DraftProgressCard {
+    background-color: #151a22;
+    border: 1px solid #2c3645;
+    border-radius: 12px;
+}
+
+QFrame#BrandCard {
+    border-left: 4px solid #3b82f6;
+}
+
+QLabel#WarRoomTitle {
+    color: #f8fafc;
+    font-size: 25px;
+    font-weight: 950;
+    letter-spacing: 1px;
+}
+
+QLabel#WarRoomSubtitle {
+    color: #64748b;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 1px;
+}
+
+QFrame#OnClockCard[userTurn="true"] {
+    background-color: #132c22;
+    border: 1px solid #22c55e;
+}
+
+QLabel#OnClockTitle {
+    color: #f8fafc;
+    font-size: 15px;
+    font-weight: 950;
+    letter-spacing: .5px;
+}
+
+QFrame#OnClockCard[userTurn="true"] QLabel#OnClockTitle {
+    color: #86efac;
+}
+
+QLabel#OnClockMeta,
+QLabel#DraftProgressMeta {
+    color: #8492a6;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+QLabel#DraftProgressTitle {
+    color: #dbeafe;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: .5px;
+}
+
+QProgressBar#DraftProgressBar {
+    background-color: #232b37;
+    border: 0;
+    border-radius: 4px;
+    height: 8px;
+}
+
+QProgressBar#DraftProgressBar::chunk {
+    background-color: #3b82f6;
+    border-radius: 4px;
+}
+
+QListWidget::item {
+    margin: 2px 4px;
+    padding: 8px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+}
+
+QListWidget::item:hover {
+    background-color: #202733;
+    border-color: #334155;
+}
+
+QListWidget::item:selected {
+    background-color: #1d4ed8;
+    border-color: #60a5fa;
+    color: #ffffff;
+}
+
+QLabel#PanelHeading {
+    color: #cbd5e1;
+    font-size: 13px;
+    font-weight: 900;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+"""

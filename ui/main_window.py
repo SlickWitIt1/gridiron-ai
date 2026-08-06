@@ -15,6 +15,7 @@ from ui.command_center_widget import CommandCenterWidget
 from ui.draft_board_dialog import DraftBoardDialog
 from ui.recommendation_worker import RecommendationWorker
 from ui.styles import DARK_STYLESHEET
+from ui.war_room_header import WarRoomHeader
 
 
 DEFAULT_SIMULATIONS = 100
@@ -94,35 +95,14 @@ class GridironWindow(QMainWindow):
             10
         )
 
-        self.title_label = QLabel(
-            "GRIDIRON AI"
-        )
+        self.war_room_header = WarRoomHeader()
+        self.main_layout.addWidget(self.war_room_header)
 
-        self.title_label.setObjectName(
-            "TitleLabel"
-        )
-
-        self.title_label.setAlignment(
-            Qt.AlignmentFlag.AlignCenter
-        )
-
-        self.main_layout.addWidget(
-            self.title_label
-        )
-
+        # Kept as a hidden compatibility label because the rest of the
+        # application still writes status text here. The War Room header
+        # is now the visible source of draft-state information.
         self.status_label = QLabel()
-
-        self.status_label.setObjectName(
-            "StatusLabel"
-        )
-
-        self.status_label.setAlignment(
-            Qt.AlignmentFlag.AlignCenter
-        )
-
-        self.main_layout.addWidget(
-            self.status_label
-        )
+        self.status_label.hide()
 
         self.content_layout = QHBoxLayout()
 
@@ -511,6 +491,7 @@ class GridironWindow(QMainWindow):
         self.status_label.setText(
             "Start a new draft or resume a saved session."
         )
+        self.war_room_header.reset()
 
         self.available_list.clear()
         self.roster_list.clear()
@@ -730,6 +711,7 @@ class GridironWindow(QMainWindow):
                 )
             )
 
+        self.war_room_header.update_state(self.session)
         self.refresh_available_players()
         self.refresh_roster()
         self.refresh_draft_board_dialog()
@@ -814,16 +796,22 @@ class GridironWindow(QMainWindow):
                 player.name,
             )
 
-            if is_my_guy:
-                item.setForeground(
-                    QColor(
-                        "#86efac"
-                    )
-                )
+            position_colors = {
+                "QB": "#c084fc",
+                "RB": "#6ee7b7",
+                "WR": "#7dd3fc",
+                "TE": "#fdba74",
+                "DST": "#cbd5e1",
+                "K": "#fde047",
+            }
+            base_position = player.position.upper().split("/")[0]
+            item.setForeground(QColor(position_colors.get(base_position, "#e2e8f0")))
 
-                item.setToolTip(
-                    "My Guy"
-                )
+            tooltip = f"{base_position} • {player.team} • FantasyPros Rank {player.rank}"
+            if is_my_guy:
+                tooltip += " • My Guy"
+                item.setBackground(QColor("#203428"))
+            item.setToolTip(tooltip)
 
             self.available_list.addItem(
                 item
@@ -861,12 +849,19 @@ class GridironWindow(QMainWindow):
                 )
             )
 
+            position_colors = {
+                "QB": "#c084fc",
+                "RB": "#6ee7b7",
+                "WR": "#7dd3fc",
+                "TE": "#fdba74",
+                "DST": "#cbd5e1",
+                "K": "#fde047",
+            }
+            base_position = player.position.upper().split("/")[0]
+            item.setForeground(QColor(position_colors.get(base_position, "#e2e8f0")))
             if is_my_guy:
-                item.setForeground(
-                    QColor(
-                        "#86efac"
-                    )
-                )
+                item.setBackground(QColor("#203428"))
+                item.setToolTip("My Guy")
 
             self.roster_list.addItem(
                 item
