@@ -1,7 +1,9 @@
+from time import perf_counter
+
 from draft_slot_analyzer import DraftSlotAnalyzer
 
 
-SIMULATIONS_PER_SLOT = 2
+SIMULATIONS_PER_SLOT = 100
 
 
 def main() -> None:
@@ -15,11 +17,15 @@ def main() -> None:
         f"market scenarios each...\n"
     )
 
+    start_time = perf_counter()
+
     analyzer = DraftSlotAnalyzer()
 
     analysis = analyzer.analyze(
         simulations_per_slot=SIMULATIONS_PER_SLOT,
     )
+
+    elapsed_seconds = perf_counter() - start_time
 
     print("\n" + "=" * 103)
     print(" DRAFT SLOT RANKINGS")
@@ -77,6 +83,10 @@ def main() -> None:
     print(
         f" Average surplus: "
         f"{best.average_surplus:+.1f} picks"
+    )
+    print(
+        f" Total runtime: "
+        f"{elapsed_seconds:.1f} seconds"
     )
     print("=" * 70)
 
