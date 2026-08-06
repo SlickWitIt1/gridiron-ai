@@ -5,26 +5,24 @@ from league import League
 
 
 class DraftEngine:
-
     def __init__(self, league: League, board: DraftBoard):
-
         self.league = league
         self.board = board
-
         self.decision_engine = DecisionEngine()
+        self.draft_results: list[DraftPick] = []
 
+    def run(self, print_picks: bool = True) -> list[DraftPick]:
         self.draft_results = []
 
-    def run(self):
+        if print_picks:
+            print("\n==============================")
+            print("      STARTING DRAFT")
+            print("==============================\n")
 
-        print("\n==============================")
-        print("      STARTING DRAFT")
-        print("==============================\n")
-
-        overall_pick = 1
-
-        for index, team_number in enumerate(self.league.draft_order):
-
+        for overall_pick, team_number in enumerate(
+            self.league.draft_order,
+            start=1,
+        ):
             team = self.league.teams[team_number - 1]
 
             player = self.decision_engine.choose_player(
@@ -36,30 +34,32 @@ class DraftEngine:
                 break
 
             team.add_player(player)
-
             self.board.draft_player(player)
 
-            round_number = (index // self.league.num_teams) + 1
-            pick_in_round = (index % self.league.num_teams) + 1
+            round_number = (
+                (overall_pick - 1) // self.league.num_teams
+            ) + 1
 
-            self.draft_results.append(
-                DraftPick(
-                    overall=overall_pick,
-                    round=round_number,
-                    pick_in_round=pick_in_round,
-                    team=team_number,
-                    player=player,
-                )
+            pick_in_round = (
+                (overall_pick - 1) % self.league.num_teams
+            ) + 1
+
+            draft_pick = DraftPick(
+                overall=overall_pick,
+                round_number=round_number,
+                pick_in_round=pick_in_round,
+                team_number=team_number,
+                player=player,
             )
 
-            print(
-                f"Pick {overall_pick:>3} | "
-                f"Team {team_number:>2} | "
-                f"{player}"
-            )
+            self.draft_results.append(draft_pick)
 
-            overall_pick += 1
+            if print_picks:
+                print(draft_pick)
 
-        print("\n==============================")
-        print("     DRAFT COMPLETE")
-        print("==============================")
+        if print_picks:
+            print("\n==============================")
+            print("      DRAFT COMPLETE")
+            print("==============================")
+
+        return self.draft_results
