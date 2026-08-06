@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 from draft_session_store import DraftSessionStore
 from live_draft import LiveDraftSession
 from preferences import load_my_guys, normalize_name
+from ui.command_center_widget import CommandCenterWidget
 from ui.draft_board_dialog import DraftBoardDialog
 from ui.recommendation_worker import RecommendationWorker
 from ui.styles import DARK_STYLESHEET
@@ -483,113 +484,24 @@ class GridironWindow(QMainWindow):
         )
 
     def setup_right_panel(self) -> None:
-        self.right_panel.addWidget(
-            self.panel_heading(
-                "Recommendations"
-            )
-        )
+        self.command_center = CommandCenterWidget()
 
-        self.recommendation_status_label = QLabel(
-            "Select players and click Analyze Selected."
+        self.recommendation_status_label = (
+            self.command_center.status_label
         )
-
-        self.recommendation_status_label.setWordWrap(
-            True
+        self.recommendation_table = (
+            self.command_center.table
         )
-
-        self.right_panel.addWidget(
-            self.recommendation_status_label
-        )
-
-        self.recommendation_table = QTableWidget(
-            0,
-            7,
-        )
-
-        self.recommendation_table.setHorizontalHeaderLabels(
-            (
-                "Rank",
-                "Player",
-                "Pos",
-                "Score",
-                "Grade",
-                "Survives",
-                "Action",
-            )
-        )
-
-        self.recommendation_table.setAlternatingRowColors(
-            True
-        )
-
-        self.recommendation_table.setSortingEnabled(
-            True
-        )
-
-        self.recommendation_table.setSelectionBehavior(
-            QTableWidget.SelectionBehavior.SelectRows
-        )
-
-        self.recommendation_table.setSelectionMode(
-            QTableWidget.SelectionMode.SingleSelection
-        )
-
-        self.recommendation_table.setEditTriggers(
-            QTableWidget.EditTrigger.NoEditTriggers
+        self.reason_label = (
+            self.command_center.reason_label
         )
 
         self.recommendation_table.itemSelectionChanged.connect(
             self.show_selected_recommendation
         )
 
-        header = self.recommendation_table.horizontalHeader()
-
-        header.setSectionResizeMode(
-            0,
-            QHeaderView.ResizeMode.ResizeToContents,
-        )
-
-        header.setSectionResizeMode(
-            1,
-            QHeaderView.ResizeMode.Stretch,
-        )
-
-        for column in range(2, 7):
-            header.setSectionResizeMode(
-                column,
-                QHeaderView.ResizeMode.ResizeToContents,
-            )
-
         self.right_panel.addWidget(
-            self.recommendation_table
-        )
-
-        self.top_pick_label = QLabel(
-            "Top pick: None"
-        )
-
-        self.top_pick_label.setObjectName(
-            "TopPickLabel"
-        )
-
-        self.right_panel.addWidget(
-            self.top_pick_label
-        )
-
-        self.reason_label = QLabel(
-            "Recommendation details will appear here."
-        )
-
-        self.reason_label.setObjectName(
-            "ReasonLabel"
-        )
-
-        self.reason_label.setWordWrap(
-            True
-        )
-
-        self.right_panel.addWidget(
-            self.reason_label
+            self.command_center
         )
 
     def show_start_screen(self) -> None:
@@ -623,13 +535,7 @@ class GridironWindow(QMainWindow):
             "No active draft."
         )
 
-        self.top_pick_label.setText(
-            "Top pick: None"
-        )
-
-        self.reason_label.setText(
-            "Recommendation details will appear here."
-        )
+        self.command_center.reset()
 
         self.record_pick_button.setEnabled(
             False
@@ -1196,11 +1102,9 @@ class GridironWindow(QMainWindow):
             False
         )
 
-        self.recommendation_status_label.setText(
-            (
-                f"Running {self.simulations} simulations "
-                f"for {len(candidate_names)} players..."
-            )
+        self.command_center.set_running(
+            simulations=self.simulations,
+            player_count=len(candidate_names),
         )
 
         self.statusBar().showMessage(
@@ -1266,96 +1170,10 @@ class GridironWindow(QMainWindow):
             recommendations
         )
 
-        self.recommendation_table.setSortingEnabled(
-            False
+        self.command_center.set_results(
+            recommendations=recommendations,
+            runtime=runtime,
         )
-
-        self.recommendation_table.setRowCount(
-            len(recommendations)
-        )
-
-        for row, recommendation in enumerate(
-            recommendations
-        ):
-            survival_text = (
-                f"{recommendation.survival_probability:.1%}"
-                if recommendation.survival_probability
-                is not None
-                else "N/A"
-            )
-
-            values = (
-                str(row + 1),
-                recommendation.player_name,
-                recommendation.position,
-                f"{recommendation.score:.1f}",
-                recommendation.grade,
-                survival_text,
-                recommendation.action,
-            )
-
-            for column, value in enumerate(
-                values
-            ):
-                item = QTableWidgetItem(
-                    value
-                )
-
-                if column in {
-                    0,
-                    2,
-                    3,
-                    4,
-                    5,
-                }:
-                    item.setTextAlignment(
-                        Qt.AlignmentFlag.AlignCenter
-                    )
-
-                self.apply_recommendation_color(
-                    item=item,
-                    column=column,
-                    grade=recommendation.grade,
-                    action=recommendation.action,
-                )
-
-                self.recommendation_table.setItem(
-                    row,
-                    column,
-                    item,
-                )
-
-        self.recommendation_table.setSortingEnabled(
-            True
-        )
-
-        self.recommendation_status_label.setText(
-            (
-                f"Analysis completed in "
-                f"{runtime:.1f} seconds."
-            )
-        )
-
-        if recommendations:
-            top = recommendations[0]
-
-            self.top_pick_label.setText(
-                (
-                    f"Top pick: {top.player_name} "
-                    f"({top.position}) — {top.grade}"
-                )
-            )
-
-            self.reason_label.setText(
-                "\n".join(
-                    f"• {reason}"
-                    for reason in top.reasons
-                )
-            )
-
-            self.recommendation_table.selectRow(
-                0
-            )
 
         self.statusBar().showMessage(
             (
@@ -1500,20 +1318,8 @@ class GridironWindow(QMainWindow):
         if recommendation is None:
             return
 
-        self.top_pick_label.setText(
-            (
-                f"{recommendation.player_name} "
-                f"({recommendation.position}) — "
-                f"{recommendation.grade} | "
-                f"{recommendation.action}"
-            )
-        )
-
-        self.reason_label.setText(
-            "\n".join(
-                f"• {reason}"
-                for reason in recommendation.reasons
-            )
+        self.command_center.display_recommendation(
+            recommendation
         )
 
     def open_draft_board(self) -> None:
@@ -1559,30 +1365,7 @@ class GridironWindow(QMainWindow):
 
     def clear_recommendations(self) -> None:
         self.current_recommendations = []
-
-        self.recommendation_table.setSortingEnabled(
-            False
-        )
-
-        self.recommendation_table.setRowCount(
-            0
-        )
-
-        self.recommendation_table.setSortingEnabled(
-            True
-        )
-
-        self.recommendation_status_label.setText(
-            "Select players and click Analyze Selected."
-        )
-
-        self.top_pick_label.setText(
-            "Top pick: None"
-        )
-
-        self.reason_label.setText(
-            "Recommendation details will appear here."
-        )
+        self.command_center.reset()
 
     def closeEvent(self, event) -> None:
         self.save_active_session()
