@@ -5,9 +5,18 @@ from league import League
 
 
 class DraftEngine:
-    def __init__(self, league: League, board: DraftBoard):
+    def __init__(
+        self,
+        league: League,
+        board: DraftBoard,
+        user_team_number: int = 7,
+        approved_players: set[str] | None = None,
+    ):
         self.league = league
         self.board = board
+        self.user_team_number = user_team_number
+        self.approved_players = approved_players
+
         self.decision_engine = DecisionEngine()
         self.draft_results: list[DraftPick] = []
 
@@ -25,13 +34,22 @@ class DraftEngine:
         ):
             team = self.league.teams[team_number - 1]
 
+            team_approved_players = None
+
+            if team_number == self.user_team_number:
+                team_approved_players = self.approved_players
+
             player = self.decision_engine.choose_player(
-                team,
-                self.board.available_players,
+                team=team,
+                available_players=self.board.available_players,
+                approved_players=team_approved_players,
             )
 
             if player is None:
-                break
+                raise RuntimeError(
+                    f"Team {team_number} had no eligible player "
+                    f"available at overall pick {overall_pick}."
+                )
 
             team.add_player(player)
             self.board.draft_player(player)
@@ -55,7 +73,11 @@ class DraftEngine:
             self.draft_results.append(draft_pick)
 
             if print_picks:
-                print(draft_pick)
+                marker = "  <-- YOUR PICK" if (
+                    team_number == self.user_team_number
+                ) else ""
+
+                print(f"{draft_pick}{marker}")
 
         if print_picks:
             print("\n==============================")
