@@ -3,6 +3,7 @@ from draft_board import DraftBoard
 from draft_pick import DraftPick
 from league import League
 from market import DraftMarket
+from preferences import normalize_name
 
 
 class DraftEngine:
@@ -13,16 +14,18 @@ class DraftEngine:
         market: DraftMarket,
         user_team_number: int = 7,
         approved_players: set[str] | None = None,
+        forbidden_players_by_pick: dict[int, set[str]] | None = None,
     ):
         self.league = league
         self.board = board
         self.user_team_number = user_team_number
         self.approved_players = approved_players
 
-        self.decision_engine = DecisionEngine(
-            market
+        self.forbidden_players_by_pick = (
+            forbidden_players_by_pick or {}
         )
 
+        self.decision_engine = DecisionEngine(market)
         self.draft_results: list[DraftPick] = []
 
     def run(
@@ -50,26 +53,36 @@ class DraftEngine:
             ) + 1
 
             team_approved_players = None
+            excluded_players: set[str] = set()
 
             if team_number == self.user_team_number:
                 team_approved_players = (
                     self.approved_players
                 )
 
-            player = (
-                self.decision_engine.choose_player(
-                    team=team,
-                    available_players=(
-                        self.board.available_players
-                    ),
-                    available_names=(
-                        self.board.available_names
-                    ),
-                    current_round=current_round,
-                    approved_players=(
-                        team_approved_players
-                    ),
-                )
+                excluded_players = {
+                    normalize_name(name)
+                    for name in (
+                        self.forbidden_players_by_pick.get(
+                            overall_pick,
+                            set(),
+                        )
+                    )
+                }
+
+            player = self.decision_engine.choose_player(
+                team=team,
+                available_players=(
+                    self.board.available_players
+                ),
+                available_names=(
+                    self.board.available_names
+                ),
+                current_round=current_round,
+                approved_players=(
+                    team_approved_players
+                ),
+                excluded_players=excluded_players,
             )
 
             if player is None:
@@ -107,9 +120,7 @@ class DraftEngine:
                     else ""
                 )
 
-                print(
-                    f"{draft_pick}{marker}"
-                )
+                print(f"{draft_pick}{marker}")
 
         if print_picks:
             print("\n==============================")

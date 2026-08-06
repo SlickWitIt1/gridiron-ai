@@ -18,8 +18,12 @@ class DecisionEngine:
         team: Team,
         available_names: set[str],
         approved_players: set[str] | None,
+        excluded_players: set[str] | None = None,
     ) -> list[Player]:
+        excluded_players = excluded_players or set()
+
         candidates: list[Player] = []
+
         position_counts: dict[str, int] = {
             "QB": 0,
             "RB": 0,
@@ -36,12 +40,15 @@ class DecisionEngine:
         }
 
         for player in self.market.sorted_players:
+            normalized_name = normalize_name(player.name)
+
             if player.name not in available_names:
                 continue
 
-            position = base_position(
-                player.position
-            )
+            if normalized_name in excluded_players:
+                continue
+
+            position = base_position(player.position)
 
             if not team.can_draft(position):
                 continue
@@ -61,8 +68,7 @@ class DecisionEngine:
 
             if (
                 approved_players is not None
-                and normalize_name(player.name)
-                in approved_players
+                and normalized_name in approved_players
             ):
                 include_player = True
 
@@ -96,6 +102,7 @@ class DecisionEngine:
         current_round: int,
         approved_players: set[str] | None = None,
         available_names: set[str] | None = None,
+        excluded_players: set[str] | None = None,
     ) -> Player | None:
         if not available_players:
             return None
@@ -110,6 +117,7 @@ class DecisionEngine:
             team=team,
             available_names=available_names,
             approved_players=approved_players,
+            excluded_players=excluded_players,
         )
 
         if not candidates:

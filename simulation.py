@@ -14,6 +14,10 @@ class Simulation:
         seed: int | None = None,
         players: list[Player] | None = None,
         approved_players: set[str] | None = None,
+        forbidden_players_by_pick: dict[
+            int,
+            set[str],
+        ] | None = None,
     ):
         self.user_team_number = user_team_number
         self.seed = seed
@@ -44,8 +48,17 @@ class Simulation:
             market=self.market,
             user_team_number=self.user_team_number,
             approved_players=self.approved_players,
+            forbidden_players_by_pick=(
+                forbidden_players_by_pick
+            ),
         )
 
-    def run(self, print_picks: bool = True) -> DraftEngine:
-        self.engine.run(print_picks=print_picks)
+    def run(
+        self,
+        print_picks: bool = True,
+    ) -> DraftEngine:
+        self.engine.run(
+            print_picks=print_picks
+        )
+
         return self.engine
