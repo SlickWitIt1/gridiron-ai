@@ -2,6 +2,7 @@ from time import perf_counter
 
 from PySide6.QtCore import QObject, Signal
 
+from preferences import normalize_name
 from projection_loader import load_projections
 from recommendation_engine import RecommendationEngine
 from wait_analyzer import WaitAnalyzer
@@ -46,6 +47,18 @@ class RecommendationWorker(QObject):
                 simulations=self.simulations,
             )
 
+            completed_names = {
+                normalize_name(player_name)
+                for player_name in self.completed_player_names
+            }
+
+            available_player_names = tuple(
+                player.name
+                for player in wait_analyzer.players
+                if normalize_name(player.name)
+                not in completed_names
+            )
+
             recommendation_engine = RecommendationEngine(
                 players=wait_analyzer.players,
                 projections=load_projections(),
@@ -55,6 +68,7 @@ class RecommendationWorker(QObject):
             recommendations = recommendation_engine.recommend(
                 wait_results=wait_results,
                 user_team=self.user_team,
+                available_player_names=available_player_names,
             )
 
             runtime = perf_counter() - start_time

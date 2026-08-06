@@ -64,10 +64,7 @@ class RecommendationEngine:
     def _calculate_replacement_points(
         self,
     ) -> dict[str, float]:
-        points_by_position: dict[
-            str,
-            list[float],
-        ] = {}
+        points_by_position: dict[str, list[float]] = {}
 
         for projection in self.projections.values():
             points_by_position.setdefault(
@@ -89,9 +86,7 @@ class RecommendationEngine:
                 )
             )
 
-            replacement_index = (
-                replacement_number - 1
-            )
+            replacement_index = replacement_number - 1
 
             if not points:
                 replacement_points[position] = 0.0
@@ -102,9 +97,7 @@ class RecommendationEngine:
                 )
 
             else:
-                replacement_points[position] = (
-                    points[-1]
-                )
+                replacement_points[position] = points[-1]
 
         return replacement_points
 
@@ -112,22 +105,16 @@ class RecommendationEngine:
     def _grade(score: float) -> str:
         if score >= 90:
             return "A+"
-
         if score >= 82:
             return "A"
-
         if score >= 74:
             return "B+"
-
         if score >= 66:
             return "B"
-
         if score >= 58:
             return "C+"
-
         if score >= 50:
             return "C"
-
         return "D"
 
     @staticmethod
@@ -136,17 +123,54 @@ class RecommendationEngine:
     ) -> str:
         if survival_probability is None:
             return "UNLIKELY AVAILABLE"
-
         if survival_probability < 0.25:
             return "DRAFT NOW"
-
         if survival_probability < 0.60:
             return "RISKY TO WAIT"
-
         if survival_probability < 0.85:
             return "CAN PROBABLY WAIT"
-
         return "SAFE TO WAIT"
+
+    @staticmethod
+    def _roster_need_label(
+        roster_fit_score: float,
+    ) -> str:
+        if roster_fit_score >= 18:
+            return "HIGH NEED"
+        if roster_fit_score >= 8:
+            return "GOOD FIT"
+        if roster_fit_score >= 0:
+            return "NEUTRAL"
+        return "LOW NEED"
+
+    @staticmethod
+    def _confidence(
+        score: float,
+        survival_probability: float | None,
+        tier_drop_points: float,
+    ) -> int:
+        score_component = min(100.0, max(0.0, score))
+
+        urgency_component = (
+            70.0
+            if survival_probability is None
+            else abs(0.5 - survival_probability) * 200.0
+        )
+
+        tier_component = min(
+            100.0,
+            tier_drop_points * 5.0,
+        )
+
+        confidence = (
+            score_component * 0.60
+            + urgency_component * 0.25
+            + tier_component * 0.15
+        )
+
+        return round(
+            min(100.0, max(0.0, confidence))
+        )
 
     def roster_fit(
         self,
@@ -156,16 +180,12 @@ class RecommendationEngine:
         score = 0.0
         reasons: list[str] = []
 
-        position_count = team.count_position(
-            position
-        )
+        position_count = team.count_position(position)
 
         if team.needs_position(position):
             score += self.STARTER_NEED_BONUS
-
             reasons.append(
-                f"Fills an open {position} "
-                f"starting or FLEX need."
+                f"Fills an open {position} starting or FLEX need."
             )
 
         if (
@@ -174,7 +194,6 @@ class RecommendationEngine:
             and not team.needs_position(position)
         ):
             score += self.FLEX_NEED_BONUS
-
             reasons.append(
                 "Can help fill the open FLEX slot."
             )
@@ -182,7 +201,6 @@ class RecommendationEngine:
         if position == "RB":
             if position_count < 4:
                 score += self.RB_DEPTH_BONUS
-
                 reasons.append(
                     "Adds valuable running-back depth."
                 )
@@ -190,7 +208,6 @@ class RecommendationEngine:
         elif position == "WR":
             if position_count < 4:
                 score += self.WR_DEPTH_BONUS
-
                 reasons.append(
                     "Adds valuable wide-receiver depth."
                 )
@@ -198,39 +215,32 @@ class RecommendationEngine:
         elif position == "QB":
             if position_count == 1:
                 score -= self.BACKUP_QB_PENALTY
-
                 reasons.append(
                     "You already have a starting QB."
                 )
 
             elif position_count >= 2:
                 score -= self.THIRD_QB_PENALTY
-
                 reasons.append(
-                    "A third QB would use a valuable "
-                    "bench spot."
+                    "A third QB would use a valuable bench spot."
                 )
 
         elif position == "TE":
             if position_count == 1:
                 score -= self.BACKUP_TE_PENALTY
-
                 reasons.append(
                     "You already have a starting TE."
                 )
 
             elif position_count >= 2:
                 score -= self.THIRD_TE_PENALTY
-
                 reasons.append(
-                    "A third TE would use a valuable "
-                    "bench spot."
+                    "A third TE would use a valuable bench spot."
                 )
 
         elif position == "DST":
             if position_count >= 1:
                 score -= self.EXTRA_DST_PENALTY
-
                 reasons.append(
                     "You already have a defense."
                 )
@@ -238,26 +248,71 @@ class RecommendationEngine:
         elif position == "K":
             if position_count >= 1:
                 score -= self.EXTRA_K_PENALTY
-
                 reasons.append(
                     "You already have a kicker."
                 )
 
         if not team.can_draft(position):
             score = -100.0
-
             reasons.append(
-                f"Your roster cannot legally add "
-                f"another {position}."
+                f"Your roster cannot legally add another {position}."
             )
 
         return score, tuple(reasons)
+
+    def _tier_drop_for(
+        self,
+        player_name: str,
+        position: str,
+        projected_points: float,
+        available_player_names: set[str] | None,
+    ) -> float:
+        if available_player_names is None:
+            return 0.0
+
+        normalized_player = normalize_name(player_name)
+        next_best_points = 0.0
+
+        for available_name in available_player_names:
+            normalized_name = normalize_name(available_name)
+
+            if normalized_name == normalized_player:
+                continue
+
+            player = self.players_by_name.get(normalized_name)
+            projection = self.projections.get(normalized_name)
+
+            if player is None or projection is None:
+                continue
+
+            if base_position(player.position) != position:
+                continue
+
+            next_best_points = max(
+                next_best_points,
+                projection.fantasy_points,
+            )
+
+        if next_best_points <= 0.0:
+            return 0.0
+
+        return max(
+            0.0,
+            projected_points - next_best_points,
+        )
 
     def recommend(
         self,
         wait_results: Iterable[WaitAnalysis],
         user_team: Team,
+        available_player_names: Iterable[str] | None = None,
     ) -> list[Recommendation]:
+        available_names = (
+            set(available_player_names)
+            if available_player_names is not None
+            else None
+        )
+
         prepared_results: list[
             tuple[
                 WaitAnalysis,
@@ -267,6 +322,7 @@ class RecommendationEngine:
                 bool,
                 float,
                 tuple[str, ...],
+                float,
             ]
         ] = []
 
@@ -286,9 +342,7 @@ class RecommendationEngine:
             if player is None or projection is None:
                 continue
 
-            position = base_position(
-                player.position
-            )
+            position = base_position(player.position)
 
             if not user_team.can_draft(position):
                 continue
@@ -318,6 +372,13 @@ class RecommendationEngine:
                 position=position,
             )
 
+            tier_drop_points = self._tier_drop_for(
+                player_name=player.name,
+                position=position,
+                projected_points=projection.fantasy_points,
+                available_player_names=available_names,
+            )
+
             prepared_results.append(
                 (
                     wait_result,
@@ -327,6 +388,7 @@ class RecommendationEngine:
                     is_my_guy,
                     roster_fit_score,
                     roster_reasons,
+                    tier_drop_points,
                 )
             )
 
@@ -340,15 +402,11 @@ class RecommendationEngine:
 
         lowest_advantage = min(advantages)
         highest_advantage = max(advantages)
-
         advantage_spread = (
-            highest_advantage
-            - lowest_advantage
+            highest_advantage - lowest_advantage
         )
 
-        recommendations: list[
-            Recommendation
-        ] = []
+        recommendations: list[Recommendation] = []
 
         for (
             wait_result,
@@ -358,10 +416,10 @@ class RecommendationEngine:
             is_my_guy,
             roster_fit_score,
             roster_reasons,
+            tier_drop_points,
         ) in prepared_results:
             if advantage_spread == 0:
                 value_score = 35.0
-
             else:
                 value_score = 20.0 + (
                     (
@@ -379,21 +437,37 @@ class RecommendationEngine:
                 15.0
                 if survival_probability is None
                 else (
-                    1.0
-                    - survival_probability
+                    1.0 - survival_probability
                 ) * 30.0
             )
 
             preference_score = (
-                15.0
-                if is_my_guy
-                else 0.0
+                15.0 if is_my_guy else 0.0
             )
 
             availability_score = (
-                wait_result
-                .available_now_probability
+                wait_result.available_now_probability
                 * 5.0
+            )
+
+            tier_score = min(
+                12.0,
+                tier_drop_points * 0.30,
+            )
+
+            wait_risk = (
+                1.0
+                if survival_probability is None
+                else 1.0 - survival_probability
+            )
+
+            expected_value_lost = (
+                tier_drop_points * wait_risk
+            )
+
+            expected_value_score = min(
+                8.0,
+                expected_value_lost * 0.35,
             )
 
             score = max(
@@ -404,12 +478,23 @@ class RecommendationEngine:
                     + urgency_score
                     + preference_score
                     + availability_score
-                    + roster_fit_score,
+                    + roster_fit_score
+                    + tier_score
+                    + expected_value_score,
                 ),
             )
 
-            position = base_position(
-                player.position
+            confidence = self._confidence(
+                score=score,
+                survival_probability=(
+                    survival_probability
+                ),
+                tier_drop_points=tier_drop_points,
+            )
+
+            position = base_position(player.position)
+            roster_need = self._roster_need_label(
+                roster_fit_score
             )
 
             reasons: list[str] = [
@@ -423,9 +508,25 @@ class RecommendationEngine:
                 )
             ]
 
-            reasons.extend(
-                roster_reasons
-            )
+            reasons.extend(roster_reasons)
+
+            if tier_drop_points >= 10.0:
+                reasons.append(
+                    f"The next available {position} projects "
+                    f"{tier_drop_points:.1f} points lower."
+                )
+            elif tier_drop_points > 0.0:
+                reasons.append(
+                    f"There is a {tier_drop_points:.1f}-point "
+                    f"drop to the next available {position}."
+                )
+
+            if expected_value_lost >= 3.0:
+                reasons.append(
+                    f"Waiting carries an estimated "
+                    f"{expected_value_lost:.1f} projected-point "
+                    f"opportunity cost."
+                )
 
             if is_my_guy:
                 reasons.append(
@@ -434,21 +535,18 @@ class RecommendationEngine:
 
             if survival_probability is None:
                 reasons.append(
-                    "The model usually has him "
-                    "gone before this pick."
+                    "The model usually has him gone before this pick."
                 )
 
             elif survival_probability < 0.25:
                 reasons.append(
-                    f"Only a "
-                    f"{survival_probability:.1%} "
+                    f"Only a {survival_probability:.1%} "
                     f"chance to reach your next pick."
                 )
 
             else:
                 reasons.append(
-                    f"A "
-                    f"{survival_probability:.1%} "
+                    f"A {survival_probability:.1%} "
                     f"chance to reach your next pick."
                 )
 
@@ -464,8 +562,7 @@ class RecommendationEngine:
                     ),
                     is_my_guy=is_my_guy,
                     available_now_probability=(
-                        wait_result
-                        .available_now_probability
+                        wait_result.available_now_probability
                     ),
                     survival_probability=(
                         survival_probability
@@ -473,6 +570,14 @@ class RecommendationEngine:
                     roster_fit_score=(
                         roster_fit_score
                     ),
+                    roster_need=roster_need,
+                    tier_drop_points=(
+                        tier_drop_points
+                    ),
+                    expected_value_lost=(
+                        expected_value_lost
+                    ),
+                    confidence=confidence,
                     score=score,
                     grade=self._grade(score),
                     action=self._action(

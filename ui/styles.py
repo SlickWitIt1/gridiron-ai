@@ -268,3 +268,16 @@ QLabel#SubsectionHeading {
     padding-top: 5px;
 }
 """
+
+# Ticket 044: Draft IQ insight emphasis.
+DARK_STYLESHEET += """
+QFrame#InsightCard {
+    min-height: 58px;
+}
+
+QLabel#InsightValue {
+    font-size: 13px;
+    font-weight: 800;
+    color: #e2e8f0;
+}
+"""

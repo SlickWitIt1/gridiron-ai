@@ -36,7 +36,7 @@ class CommandCenterWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
 
-        heading = QLabel("DRAFT COMMAND CENTER")
+        heading = QLabel("DRAFT IQ COMMAND CENTER")
         heading.setObjectName("CommandCenterHeading")
         layout.addWidget(heading)
 
@@ -109,22 +109,33 @@ class CommandCenterWidget(QWidget):
 
         layout.addWidget(self.hero_card)
 
-        evidence_row = QHBoxLayout()
+        evidence_grid = QGridLayout()
+        evidence_grid.setSpacing(8)
+
         self.wait_risk_card = self._small_card(
             "WAIT RISK", "No analysis yet"
         )
         self.roster_fit_card = self._small_card(
-            "ROSTER FIT", "No analysis yet"
+            "ROSTER NEED", "No analysis yet"
         )
-        evidence_row.addWidget(self.wait_risk_card)
-        evidence_row.addWidget(self.roster_fit_card)
-        layout.addLayout(evidence_row)
+        self.tier_drop_card = self._small_card(
+            "TIER DROP", "No analysis yet"
+        )
+        self.expected_loss_card = self._small_card(
+            "EXPECTED LOSS", "No analysis yet"
+        )
+
+        evidence_grid.addWidget(self.wait_risk_card, 0, 0)
+        evidence_grid.addWidget(self.roster_fit_card, 0, 1)
+        evidence_grid.addWidget(self.tier_drop_card, 1, 0)
+        evidence_grid.addWidget(self.expected_loss_card, 1, 1)
+        layout.addLayout(evidence_grid)
 
         alternatives = QLabel("TOP ALTERNATIVES")
         alternatives.setObjectName("SubsectionHeading")
         layout.addWidget(alternatives)
 
-        self.table = QTableWidget(0, 7)
+        self.table = QTableWidget(0, 8)
         self.table.setHorizontalHeaderLabels(
             (
                 "Rank",
@@ -133,6 +144,7 @@ class CommandCenterWidget(QWidget):
                 "Score",
                 "Grade",
                 "Survives",
+                "EV Lost",
                 "Action",
             )
         )
@@ -158,7 +170,7 @@ class CommandCenterWidget(QWidget):
         )
         self.reason_label.setObjectName("ReasonLabel")
         self.reason_label.setWordWrap(True)
-        self.reason_label.setMinimumHeight(92)
+        self.reason_label.setMinimumHeight(108)
         layout.addWidget(self.reason_label)
 
     @staticmethod
@@ -217,6 +229,8 @@ class CommandCenterWidget(QWidget):
         self.action_label.style().polish(self.action_label)
         self.wait_risk_card.value_label.setText("No analysis yet")
         self.roster_fit_card.value_label.setText("No analysis yet")
+        self.tier_drop_card.value_label.setText("No analysis yet")
+        self.expected_loss_card.value_label.setText("No analysis yet")
         self.reason_label.setText(
             "Recommendation details will appear here."
         )
@@ -256,12 +270,13 @@ class CommandCenterWidget(QWidget):
                 f"{recommendation.score:.1f}",
                 recommendation.grade,
                 survival_text,
+                f"{recommendation.expected_value_lost:.1f}",
                 recommendation.action,
             )
 
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
-                if column in {0, 2, 3, 4, 5}:
+                if column in {0, 2, 3, 4, 5, 6}:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._apply_table_color(
                     item,
@@ -287,7 +302,6 @@ class CommandCenterWidget(QWidget):
         survival_text = (
             f"{survival:.1%}" if survival is not None else "N/A"
         )
-        confidence = self._confidence_for(recommendation)
 
         self.player_name_label.setText(recommendation.player_name)
         self.player_meta_label.setText(
@@ -308,8 +322,10 @@ class CommandCenterWidget(QWidget):
             f"color: {self._grade_color(recommendation.grade)};"
         )
         self.survival_label.setText(survival_text)
-        self.confidence_label.setText(f"CONFIDENCE {confidence}%")
-        self.confidence_bar.setValue(confidence)
+        self.confidence_label.setText(
+            f"CONFIDENCE {recommendation.confidence}%"
+        )
+        self.confidence_bar.setValue(recommendation.confidence)
 
         self.action_label.setText(recommendation.action)
         self.action_label.setProperty(
@@ -327,29 +343,37 @@ class CommandCenterWidget(QWidget):
         else:
             wait_text = f"Lower risk — {survival:.1%} survives"
 
-        roster_score = recommendation.roster_fit_score
-        roster_text = (
-            f"Strong fit  {roster_score:+.1f}"
-            if roster_score >= 10
-            else f"Neutral fit  {roster_score:+.1f}"
-            if roster_score >= 0
-            else f"Roster penalty  {roster_score:+.1f}"
+        tier_drop = recommendation.tier_drop_points
+        tier_text = (
+            f"Major cliff — next {position} is {tier_drop:.1f} pts lower"
+            if tier_drop >= 15.0
+            else f"Meaningful drop — {tier_drop:.1f} pts"
+            if tier_drop >= 7.0
+            else f"Small drop — {tier_drop:.1f} pts"
+            if tier_drop > 0.0
+            else "No immediate positional cliff"
+        )
+
+        expected_loss = recommendation.expected_value_lost
+        loss_text = (
+            f"{expected_loss:.1f} projected points if you wait"
+            if expected_loss > 0.0
+            else "Minimal projected opportunity cost"
         )
 
         self.wait_risk_card.value_label.setText(wait_text)
-        self.roster_fit_card.value_label.setText(roster_text)
+        self.roster_fit_card.value_label.setText(
+            f"{recommendation.roster_need}  "
+            f"{recommendation.roster_fit_score:+.1f}"
+        )
+        self.tier_drop_card.value_label.setText(tier_text)
+        self.expected_loss_card.value_label.setText(loss_text)
         self.reason_label.setText(
-            "\n".join(f"• {reason}" for reason in recommendation.reasons)
+            "\n".join(
+                f"• {reason}"
+                for reason in recommendation.reasons
+            )
         )
-
-    @staticmethod
-    def _confidence_for(recommendation) -> int:
-        score_confidence = min(100.0, max(0.0, recommendation.score))
-        survival = recommendation.survival_probability
-        urgency_confidence = (
-            70.0 if survival is None else abs(0.5 - survival) * 200.0
-        )
-        return round(score_confidence * 0.7 + urgency_confidence * 0.3)
 
     @staticmethod
     def _grade_color(grade: str) -> str:
@@ -383,15 +407,35 @@ class CommandCenterWidget(QWidget):
     ) -> None:
         if column == 2:
             item.setForeground(
-                QColor(POSITION_COLORS.get(position.upper(), "#cbd5e1"))
+                QColor(
+                    POSITION_COLORS.get(
+                        position.upper(),
+                        "#cbd5e1",
+                    )
+                )
             )
         elif column == 4:
-            item.setForeground(QColor(CommandCenterWidget._grade_color(grade)))
+            item.setForeground(
+                QColor(
+                    CommandCenterWidget._grade_color(
+                        grade
+                    )
+                )
+            )
         elif column == 6:
+            item.setForeground(QColor("#fda4af"))
+        elif column == 7:
             action_colors = {
                 "DRAFT NOW": "#4ade80",
                 "RISKY TO WAIT": "#fb923c",
                 "CAN PROBABLY WAIT": "#facc15",
                 "SAFE TO WAIT": "#93c5fd",
             }
-            item.setForeground(QColor(action_colors.get(action, "#cbd5e1")))
+            item.setForeground(
+                QColor(
+                    action_colors.get(
+                        action,
+                        "#cbd5e1",
+                    )
+                )
+            )

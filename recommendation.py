@@ -15,6 +15,11 @@ class Recommendation:
     survival_probability: float | None
 
     roster_fit_score: float
+    roster_need: str
+
+    tier_drop_points: float
+    expected_value_lost: float
+    confidence: int
 
     score: float
     grade: str
