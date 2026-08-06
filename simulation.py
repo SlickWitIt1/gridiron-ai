@@ -56,9 +56,11 @@ class Simulation:
     def run(
         self,
         print_picks: bool = True,
+        max_overall_pick: int | None = None,
     ) -> DraftEngine:
         self.engine.run(
-            print_picks=print_picks
+            print_picks=print_picks,
+            max_overall_pick=max_overall_pick,
         )
 
         return self.engine

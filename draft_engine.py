@@ -31,6 +31,7 @@ class DraftEngine:
     def run(
         self,
         print_picks: bool = True,
+        max_overall_pick: int | None = None,
     ) -> list[DraftPick]:
         self.draft_results = []
 
@@ -43,6 +44,12 @@ class DraftEngine:
             self.league.draft_order,
             start=1,
         ):
+            if (
+                max_overall_pick is not None
+                and overall_pick > max_overall_pick
+            ):
+                break
+
             team = self.league.teams[
                 team_number - 1
             ]
@@ -108,9 +115,7 @@ class DraftEngine:
                 player=player,
             )
 
-            self.draft_results.append(
-                draft_pick
-            )
+            self.draft_results.append(draft_pick)
 
             if print_picks:
                 marker = (

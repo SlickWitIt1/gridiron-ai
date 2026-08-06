@@ -53,6 +53,14 @@ def main() -> None:
 
     analyzer = WaitAnalyzer()
 
+    results = analyzer.analyze_players(
+        player_names=PLAYERS_TO_CHECK,
+        draft_slot=DRAFT_SLOT,
+        current_pick=CURRENT_PICK,
+        next_pick=NEXT_PICK,
+        simulations=SIMULATIONS,
+    )
+
     print("=" * 86)
     print(" DRAFT NOW OR WAIT?")
     print("=" * 86)
@@ -66,15 +74,7 @@ def main() -> None:
 
     print("-" * 86)
 
-    for player_name in PLAYERS_TO_CHECK:
-        result = analyzer.analyze(
-            player_name=player_name,
-            draft_slot=DRAFT_SLOT,
-            current_pick=CURRENT_PICK,
-            next_pick=NEXT_PICK,
-            simulations=SIMULATIONS,
-        )
-
+    for result in results:
         survival_text = (
             f"{result.survival_probability:.1%}"
             if result.survival_probability
@@ -83,7 +83,7 @@ def main() -> None:
         )
 
         print(
-            f"{player_name:<24}"
+            f"{result.player_name:<24}"
             f"{result.available_now_probability:>11.1%}"
             f"{survival_text:>12}"
             f"{recommendation(result.survival_probability):>24}"
@@ -94,6 +94,7 @@ def main() -> None:
     )
 
     print("-" * 86)
+
     print(
         f"Runtime: {elapsed_seconds:.1f} seconds"
     )
