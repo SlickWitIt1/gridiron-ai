@@ -5,6 +5,7 @@ from preferences import load_my_guys, normalize_name
 from projection import Projection
 from projection_loader import load_projections
 from recommendation import Recommendation
+from recommendation_score import RecommendationScore
 from team import Team, base_position
 from wait_analyzer import WaitAnalysis
 
@@ -577,8 +578,16 @@ class RecommendationEngine:
                     expected_value_lost=(
                         expected_value_lost
                     ),
-                    confidence=confidence,
-                    score=score,
+                    score_breakdown=RecommendationScore(
+                        total=score,
+                        projection=value_score + availability_score,
+                        wait_risk=urgency_score + expected_value_score,
+                        roster_fit=roster_fit_score,
+                        scarcity=tier_score,
+                        tier_drop=tier_score,
+                        preference=preference_score,
+                        confidence=confidence,
+                    ),
                     grade=self._grade(score),
                     action=self._action(
                         survival_probability

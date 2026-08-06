@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from recommendation_score import RecommendationScore
+
 
 @dataclass(frozen=True, slots=True)
 class Recommendation:
@@ -19,10 +21,20 @@ class Recommendation:
 
     tier_drop_points: float
     expected_value_lost: float
-    confidence: int
 
-    score: float
+    score_breakdown: RecommendationScore
+
     grade: str
     action: str
 
     reasons: tuple[str, ...]
+
+    @property
+    def score(self) -> float:
+        """Preserve the existing recommendation.score API."""
+        return self.score_breakdown.total
+
+    @property
+    def confidence(self) -> int:
+        """Preserve the existing recommendation.confidence API."""
+        return self.score_breakdown.confidence

@@ -1,18 +1,22 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class RecommendationScore:
-    player_name: str
+    """Explainable score components for one draft recommendation."""
 
-    total_score: float
+    total: float
 
-    projection_score: float = 0.0
-    wait_risk_score: float = 0.0
-    roster_fit_score: float = 0.0
-    scarcity_score: float = 0.0
-    tier_drop_score: float = 0.0
+    projection: float
+    wait_risk: float
+    roster_fit: float
+    scarcity: float
+    tier_drop: float
+    preference: float
 
-    confidence: float = 0.0
+    confidence: int
 
-    explanation: list[str] = field(default_factory=list)
+    @property
+    def score(self) -> float:
+        """Compatibility alias used by existing UI code."""
+        return self.total
