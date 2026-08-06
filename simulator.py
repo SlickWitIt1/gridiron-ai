@@ -1,13 +1,12 @@
-from preferences import normalize_name
+from config import USER_TEAM_NUMBER
+from roster_evaluator import RosterEvaluator
 from simulation import Simulation
 
 
-USER_TEAM_NUMBER = 7
-
-
 def main():
+
     print("===================================")
-    print(" Taylor Draft Simulator")
+    print("      GRIDIRON AI")
     print("===================================")
 
     simulation = Simulation(
@@ -16,36 +15,37 @@ def main():
 
     engine = simulation.run(print_picks=True)
 
-    user_team = simulation.league.teams[
+    team = simulation.league.teams[
         USER_TEAM_NUMBER - 1
     ]
 
-    print("\n===================================")
-    print(f" YOUR ROSTER — DRAFT SLOT {USER_TEAM_NUMBER}")
-    print("===================================\n")
+    evaluator = RosterEvaluator()
 
-    approved_count = 0
+    results = evaluator.evaluate(team)
 
-    for player in user_team.players:
-        is_approved = (
-            normalize_name(player.name)
-            in simulation.approved_players
-        )
+    print("\n")
+    print("=" * 35)
+    print(" GRIDIRON REPORT")
+    print("=" * 35)
 
-        if is_approved:
-            approved_count += 1
+    print(f"Overall Score : {results['overall']}")
+    print()
 
-        print(player)
+    print(f"QB : {results['QB']}")
+    print(f"RB : {results['RB']}")
+    print(f"WR : {results['WR']}")
+    print(f"TE : {results['TE']}")
+    print(f"DST: {results['DST']}")
+    print(f"K  : {results['K']}")
 
-    print(
-        f"\nMy Guys drafted: "
-        f"{approved_count}/{len(user_team.players)}"
-    )
+    print("\n")
+    print("=" * 35)
+    print(" YOUR ROSTER")
+    print("=" * 35)
 
-    print(
-        f"Draft picks recorded: "
-        f"{len(engine.draft_results)}"
-    )
+    team.print_roster()
+
+    print(f"\nDraft Picks Recorded: {len(engine.draft_results)}")
 
 
 if __name__ == "__main__":
