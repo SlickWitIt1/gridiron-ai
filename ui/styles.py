@@ -378,3 +378,56 @@ QLabel#PanelHeading {
     text-transform: uppercase;
 }
 """
+
+# Ticket 051: compact live draft pulse.
+DARK_STYLESHEET += """
+QFrame#DraftPulseCard {
+    background-color: #171b23;
+    border: 1px solid #303949;
+    border-radius: 10px;
+}
+
+QFrame#DraftPulseCard[runStrength="watch"] {
+    border: 1px solid #facc15;
+}
+
+QFrame#DraftPulseCard[runStrength="active"] {
+    border: 1px solid #fb923c;
+}
+
+QFrame#DraftPulseCard[runStrength="strong"] {
+    border: 1px solid #ef4444;
+}
+
+QLabel#DraftPulseHeadline {
+    color: #f8fafc;
+    font-size: 13px;
+    font-weight: 900;
+    letter-spacing: 0.5px;
+}
+
+QLabel#DraftPulseDetail {
+    color: #94a3b8;
+    font-size: 11px;
+}
+
+QLabel#DraftPulsePosition {
+    min-width: 24px;
+    font-size: 11px;
+}
+
+QProgressBar#DraftPulseBar {
+    background-color: #252c38;
+    border: 0;
+    border-radius: 5px;
+    color: #f8fafc;
+    font-size: 10px;
+    font-weight: 800;
+    text-align: center;
+}
+
+QProgressBar#DraftPulseBar::chunk {
+    background-color: #3b82f6;
+    border-radius: 5px;
+}
+"""

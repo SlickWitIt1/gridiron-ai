@@ -13,6 +13,7 @@ from live_draft import LiveDraftSession
 from preferences import load_my_guys, normalize_name
 from ui.command_center_widget import CommandCenterWidget
 from ui.draft_board_dialog import DraftBoardDialog
+from ui.draft_pulse_widget import DraftPulseWidget
 from ui.recommendation_worker import RecommendationWorker
 from ui.styles import DARK_STYLESHEET
 from ui.war_room_header import WarRoomHeader
@@ -349,6 +350,18 @@ class GridironWindow(QMainWindow):
             self.roster_summary_label
         )
 
+        self.left_panel.addSpacing(
+            10
+        )
+
+        self.draft_pulse_widget = DraftPulseWidget(
+            window_size=10
+        )
+
+        self.left_panel.addWidget(
+            self.draft_pulse_widget
+        )
+
     def setup_middle_panel(self) -> None:
         self.middle_panel.addWidget(
             self.panel_heading(
@@ -492,6 +505,7 @@ class GridironWindow(QMainWindow):
             "Start a new draft or resume a saved session."
         )
         self.war_room_header.reset()
+        self.draft_pulse_widget.reset()
 
         self.available_list.clear()
         self.roster_list.clear()
@@ -712,6 +726,7 @@ class GridironWindow(QMainWindow):
             )
 
         self.war_room_header.update_state(self.session)
+        self.draft_pulse_widget.update_from_session(self.session)
         self.refresh_available_players()
         self.refresh_roster()
         self.refresh_draft_board_dialog()
