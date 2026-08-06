@@ -1,51 +1,81 @@
 from config import USER_TEAM_NUMBER
-from roster_evaluator import RosterEvaluator
+from preferences import normalize_name
+from projection_loader import load_projections
 from simulation import Simulation
 
 
-def main():
+def main() -> None:
+    print("===================================")
+    print("           GRIDIRON AI")
+    print("===================================")
 
-    print("===================================")
-    print("      GRIDIRON AI")
-    print("===================================")
+    projections = load_projections()
+
+    print(
+        f"\nPlayer projections loaded: "
+        f"{len(projections)}"
+    )
 
     simulation = Simulation(
         user_team_number=USER_TEAM_NUMBER,
     )
 
-    engine = simulation.run(print_picks=True)
+    engine = simulation.run(print_picks=False)
 
-    team = simulation.league.teams[
+    user_team = simulation.league.teams[
         USER_TEAM_NUMBER - 1
     ]
 
-    evaluator = RosterEvaluator()
+    print("\n===================================")
+    print(f" YOUR ROSTER — DRAFT SLOT {USER_TEAM_NUMBER}")
+    print("===================================\n")
 
-    results = evaluator.evaluate(team)
+    total_roster_projection = 0.0
+    players_with_projections = 0
+    missing_players: list[str] = []
 
-    print("\n")
-    print("=" * 35)
-    print(" GRIDIRON REPORT")
-    print("=" * 35)
+    for player in user_team.players:
+        projection = projections.get(
+            normalize_name(player.name)
+        )
 
-    print(f"Overall Score : {results['overall']}")
-    print()
+        if projection is None:
+            missing_players.append(player.name)
+            print(
+                f"{player.position:<4} | "
+                f"{player.name:<25} | "
+                f"No projection"
+            )
+            continue
 
-    print(f"QB : {results['QB']}")
-    print(f"RB : {results['RB']}")
-    print(f"WR : {results['WR']}")
-    print(f"TE : {results['TE']}")
-    print(f"DST: {results['DST']}")
-    print(f"K  : {results['K']}")
+        players_with_projections += 1
+        total_roster_projection += projection.fantasy_points
 
-    print("\n")
-    print("=" * 35)
-    print(" YOUR ROSTER")
-    print("=" * 35)
+        print(projection)
 
-    team.print_roster()
+    print("\n" + "-" * 55)
 
-    print(f"\nDraft Picks Recorded: {len(engine.draft_results)}")
+    print(
+        f"Players with projections: "
+        f"{players_with_projections}/"
+        f"{len(user_team.players)}"
+    )
+
+    print(
+        f"Total 16-player projection: "
+        f"{total_roster_projection:.1f}"
+    )
+
+    print(
+        f"Draft picks recorded: "
+        f"{len(engine.draft_results)}"
+    )
+
+    if missing_players:
+        print("\nMissing projections:")
+
+        for name in missing_players:
+            print(f"- {name}")
 
 
 if __name__ == "__main__":
