@@ -15,7 +15,7 @@ class Player:
     bust: str
     sos: str
 
-    drafted = False
+    drafted: bool = False
 
     def __str__(self):
         return f"{self.rank:>3} | {self.position:<3} | {self.name}"
