@@ -3,35 +3,63 @@ from player import Player
 
 class Team:
 
-    def __init__(self, number: int):
+    STARTERS = {
+        "QB": 1,
+        "RB": 2,
+        "WR": 2,
+        "TE": 1,
+        "DST": 1,
+        "K": 1,
+    }
+
+    BENCH_SIZE = 7
+
+    def __init__(self, number):
 
         self.number = number
         self.players = []
 
-    def add_player(self, player: Player):
+    def add_player(self, player):
 
         self.players.append(player)
 
-    def count_position(self, position: str):
+    def count_position(self, position):
 
         return sum(
-            1 for player in self.players
+            1
+            for player in self.players
             if player.position.startswith(position)
         )
 
-    def needs_position(self, position: str):
+    def starter_slots_filled(self):
 
-        limits = {
-            "QB": 1,
-            "RB": 2,
-            "WR": 2,
-            "TE": 1,
-        }
+        total = 0
 
-        if position not in limits:
-            return True
+        for position, limit in self.STARTERS.items():
 
-        return self.count_position(position) < limits[position]
+            total += min(self.count_position(position), limit)
+
+        return total
+
+    def bench_players(self):
+
+        return max(0, len(self.players) - self.starter_slots_filled())
+
+    def needs_position(self, position):
+
+        # Fill starters first
+        if position in self.STARTERS:
+
+            if self.count_position(position) < self.STARTERS[position]:
+                return True
+
+        # After starters are full...
+        if self.starter_slots_filled() >= 8:
+
+            if self.bench_players() < self.BENCH_SIZE:
+                return True
+
+        return False
 
     def print_roster(self):
 
@@ -41,7 +69,3 @@ class Team:
 
         for player in self.players:
             print(player)
-
-    def __str__(self):
-
-        return f"Team {self.number}"

@@ -4,7 +4,7 @@ from team import Team
 
 class DecisionEngine:
 
-    def choose_player(self, team: Team, available_players: list[Player]) -> Player | None:
+    def choose_player(self, team: Team, available_players: list[Player]):
 
         for player in available_players:
 
@@ -12,8 +12,5 @@ class DecisionEngine:
 
             if team.needs_position(position):
                 return player
-
-        if not available_players:
-            return None
 
         return available_players[0]
