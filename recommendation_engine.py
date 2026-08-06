@@ -357,13 +357,6 @@ class RecommendationEngine:
         if not prepared_results:
             return []
 
-        advantages = [
-            float(item["projection_advantage"])
-            for item in prepared_results
-        ]
-        minimum_advantage = min(advantages)
-        maximum_advantage = max(advantages)
-
         recommendations: list[Recommendation] = []
 
         for item in prepared_results:
@@ -377,10 +370,13 @@ class RecommendationEngine:
             roster_reasons = item["roster_reasons"]
             tier_drop_points = float(item["tier_drop_points"])
 
+            # Score projection value against a stable replacement-level
+            # scale. This avoids a player's score changing simply because
+            # the user selected a different comparison group.
             projection_component = self._normalize(
-                projection_advantage,
-                minimum_advantage,
-                maximum_advantage,
+                max(0.0, projection_advantage),
+                0.0,
+                80.0,
                 self.PROJECTION_MAX,
             )
 
@@ -402,10 +398,14 @@ class RecommendationEngine:
                 self.ROSTER_FIT_MAX,
             )
 
+            # Scarcity reflects how sharply the position falls after this
+            # player, while tier_drop_component rewards especially large
+            # cliffs. Keeping this separate from raw projection prevents
+            # double-counting the same signal.
             scarcity_component = self._normalize(
-                max(0.0, projection_advantage),
+                tier_drop_points,
                 0.0,
-                100.0,
+                12.0,
                 self.SCARCITY_MAX,
             )
 
@@ -447,40 +447,33 @@ class RecommendationEngine:
 
             reasons: list[str] = [
                 (
-                    f"Projection contributes "
-                    f"{projection_component:.1f} of "
-                    f"{self.PROJECTION_MAX:.0f} score points."
-                ),
-                (
-                    f"Projects for {projection.fantasy_points:.1f} "
-                    f"points ({projection_advantage:+.1f} versus the "
-                    f"{position} replacement baseline)."
+                    f"{projection.fantasy_points:.1f} projected points "
+                    f"({projection_advantage:+.1f} above the {position} "
+                    f"replacement baseline)."
                 ),
             ]
             reasons.extend(roster_reasons)
 
             if tier_drop_points >= 10.0:
                 reasons.append(
-                    f"The next available {position} projects "
+                    f"Tier cliff: the next {position} projects "
                     f"{tier_drop_points:.1f} points lower."
                 )
             elif tier_drop_points > 0.0:
                 reasons.append(
-                    f"There is a {tier_drop_points:.1f}-point drop "
-                    f"to the next available {position}."
+                    f"The next {position} is {tier_drop_points:.1f} "
+                    f"projected points lower."
                 )
 
             if expected_value_lost >= 3.0:
                 reasons.append(
-                    f"Waiting carries an estimated "
-                    f"{expected_value_lost:.1f} projected-point "
-                    f"opportunity cost."
+                    f"Waiting risks about {expected_value_lost:.1f} "
+                    f"projected points of value."
                 )
 
             if is_my_guy:
                 reasons.append(
-                    f"My Guy preference adds "
-                    f"{self.PREFERENCE_MAX:.1f} score points."
+                    "This player is on your My Guys list."
                 )
 
             if survival_probability is None:

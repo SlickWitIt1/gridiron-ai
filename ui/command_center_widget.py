@@ -6,6 +6,9 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QProgressBar,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -28,12 +31,25 @@ class CommandCenterWidget(QWidget):
         super().__init__()
 
         self.current_recommendations = []
+        self.breakdown_rows = {}
+        self.alternative_buttons: list[QPushButton] = []
         self._setup_ui()
         self.reset()
 
     def _setup_ui(self) -> None:
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(0, 0, 6, 0)
         layout.setSpacing(10)
 
         heading = QLabel("DRAFT IQ COMMAND CENTER")
@@ -60,6 +76,9 @@ class CommandCenterWidget(QWidget):
         name_row = QHBoxLayout()
         self.player_name_label = QLabel("Waiting for analysis")
         self.player_name_label.setObjectName("HeroPlayerName")
+        self.player_name_label.setStyleSheet(
+            "font-size: 34px; font-weight: 900; padding: 4px 0;"
+        )
         name_row.addWidget(self.player_name_label, 1)
 
         self.position_badge = QLabel("—")
@@ -79,8 +98,8 @@ class CommandCenterWidget(QWidget):
         metrics.setHorizontalSpacing(12)
         metrics.setVerticalSpacing(4)
 
-        metrics.addWidget(self._metric_title("SCORE"), 0, 0)
-        metrics.addWidget(self._metric_title("GRADE"), 0, 1)
+        metrics.addWidget(self._metric_title("DECISION SCORE"), 0, 0)
+        metrics.addWidget(self._metric_title("RATING"), 0, 1)
         metrics.addWidget(self._metric_title("SURVIVES"), 0, 2)
 
         self.score_label = self._metric_value("—")
@@ -100,11 +119,16 @@ class CommandCenterWidget(QWidget):
         self.confidence_bar.setRange(0, 100)
         self.confidence_bar.setTextVisible(False)
         self.confidence_bar.setObjectName("ConfidenceBar")
+        self.confidence_bar.setMinimumHeight(22)
         hero_layout.addWidget(self.confidence_bar)
 
         self.action_label = QLabel("ANALYZE PLAYERS")
         self.action_label.setObjectName("ActionBadge")
         self.action_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.action_label.setMinimumHeight(46)
+        self.action_label.setStyleSheet(
+            "font-size: 17px; font-weight: 900; border-radius: 10px;"
+        )
         hero_layout.addWidget(self.action_label)
 
         layout.addWidget(self.hero_card)
@@ -137,12 +161,11 @@ class CommandCenterWidget(QWidget):
 
         self.breakdown_frame = QFrame()
         self.breakdown_frame.setObjectName("InsightCard")
-        breakdown_layout = QGridLayout(self.breakdown_frame)
+        self.breakdown_frame.setMinimumHeight(250)
+        breakdown_layout = QVBoxLayout(self.breakdown_frame)
         breakdown_layout.setContentsMargins(12, 10, 12, 10)
-        breakdown_layout.setHorizontalSpacing(10)
-        breakdown_layout.setVerticalSpacing(6)
+        breakdown_layout.setSpacing(8)
 
-        self.breakdown_rows = {}
         component_names = (
             "Projection",
             "Wait Risk",
@@ -152,24 +175,52 @@ class CommandCenterWidget(QWidget):
             "My Guy",
         )
 
-        for row, component_name in enumerate(component_names):
-            name_label = QLabel(component_name)
-            name_label.setObjectName("InsightTitle")
+        for component_name in component_names:
+            component_row = QFrame()
+            component_row.setStyleSheet(
+                "QFrame {"
+                "background-color: #10151d;"
+                "border: 1px solid #283446;"
+                "border-radius: 8px;"
+                "}"
+            )
+            component_layout = QVBoxLayout(component_row)
+            component_layout.setContentsMargins(10, 7, 10, 7)
+            component_layout.setSpacing(5)
+
+            header_row = QHBoxLayout()
+            name_label = QLabel(component_name.upper())
+            name_label.setStyleSheet(
+                "font-size: 11px; font-weight: 900; color: #cbd5e1;"
+            )
+            value_label = QLabel("—")
+            value_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+            value_label.setStyleSheet(
+                "font-size: 12px; font-weight: 900; color: #f8fafc;"
+            )
+            header_row.addWidget(name_label, 1)
+            header_row.addWidget(value_label)
+            component_layout.addLayout(header_row)
 
             progress_bar = QProgressBar()
             progress_bar.setRange(0, 100)
             progress_bar.setTextVisible(False)
-            progress_bar.setObjectName("ConfidenceBar")
-            progress_bar.setMaximumHeight(12)
+            progress_bar.setMinimumHeight(11)
+            progress_bar.setMaximumHeight(11)
+            progress_bar.setStyleSheet(
+                "QProgressBar {"
+                "background-color: #263244;"
+                "border: 0;"
+                "border-radius: 5px;"
+                "}"
+                "QProgressBar::chunk {"
+                "background-color: #22c55e;"
+                "border-radius: 5px;"
+                "}"
+            )
+            component_layout.addWidget(progress_bar)
 
-            value_label = QLabel("—")
-            value_label.setAlignment(Qt.AlignmentFlag.AlignRight)
-            value_label.setMinimumWidth(64)
-
-            breakdown_layout.addWidget(name_label, row, 0)
-            breakdown_layout.addWidget(progress_bar, row, 1)
-            breakdown_layout.addWidget(value_label, row, 2)
-
+            breakdown_layout.addWidget(component_row)
             self.breakdown_rows[component_name] = (
                 progress_bar,
                 value_label,
@@ -181,6 +232,25 @@ class CommandCenterWidget(QWidget):
         alternatives.setObjectName("SubsectionHeading")
         layout.addWidget(alternatives)
 
+        self.alternatives_frame = QFrame()
+        self.alternatives_frame.setObjectName("InsightCard")
+        self.alternatives_frame.setMinimumHeight(92)
+        self.alternatives_layout = QVBoxLayout(self.alternatives_frame)
+        self.alternatives_layout.setContentsMargins(8, 8, 8, 8)
+        self.alternatives_layout.setSpacing(7)
+
+        self.no_alternatives_label = QLabel(
+            "Analyze more than one player to see alternatives."
+        )
+        self.no_alternatives_label.setWordWrap(True)
+        self.no_alternatives_label.setStyleSheet(
+            "color: #94a3b8; padding: 8px;"
+        )
+        self.alternatives_layout.addWidget(self.no_alternatives_label)
+        layout.addWidget(self.alternatives_frame)
+
+        # Kept as a hidden compatibility table because main_window.py still
+        # references command_center.table. Visible alternatives are cards.
         self.table = QTableWidget(0, 8)
         self.table.setHorizontalHeaderLabels(
             (
@@ -194,18 +264,8 @@ class CommandCenterWidget(QWidget):
                 "Action",
             )
         )
-        self.table.setAlternatingRowColors(True)
-        self.table.setSortingEnabled(True)
-        self.table.setSelectionBehavior(
-            QTableWidget.SelectionBehavior.SelectRows
-        )
-        self.table.setSelectionMode(
-            QTableWidget.SelectionMode.SingleSelection
-        )
-        self.table.setEditTriggers(
-            QTableWidget.EditTrigger.NoEditTriggers
-        )
-        layout.addWidget(self.table, 1)
+        self.table.setSortingEnabled(False)
+        self.table.hide()
 
         why = QLabel("WHY THIS PICK?")
         why.setObjectName("SubsectionHeading")
@@ -218,6 +278,10 @@ class CommandCenterWidget(QWidget):
         self.reason_label.setWordWrap(True)
         self.reason_label.setMinimumHeight(108)
         layout.addWidget(self.reason_label)
+        layout.addStretch()
+
+        self.scroll_area.setWidget(content)
+        outer_layout.addWidget(self.scroll_area)
 
     @staticmethod
     def _metric_title(text: str) -> QLabel:
@@ -237,8 +301,8 @@ class CommandCenterWidget(QWidget):
     def _small_card(title: str, value: str) -> QFrame:
         frame = QFrame()
         frame.setObjectName("InsightCard")
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(12, 10, 12, 10)
+        card_layout = QVBoxLayout(frame)
+        card_layout.setContentsMargins(12, 10, 12, 10)
 
         title_label = QLabel(title)
         title_label.setObjectName("InsightTitle")
@@ -246,8 +310,8 @@ class CommandCenterWidget(QWidget):
         value_label.setObjectName("InsightValue")
         value_label.setWordWrap(True)
 
-        layout.addWidget(title_label)
-        layout.addWidget(value_label)
+        card_layout.addWidget(title_label)
+        card_layout.addWidget(value_label)
 
         frame.value_label = value_label
         return frame
@@ -277,15 +341,19 @@ class CommandCenterWidget(QWidget):
         self.roster_fit_card.value_label.setText("No analysis yet")
         self.tier_drop_card.value_label.setText("No analysis yet")
         self.expected_loss_card.value_label.setText("No analysis yet")
+
         for progress_bar, value_label in self.breakdown_rows.values():
             progress_bar.setValue(0)
             value_label.setText("—")
+
+        self._clear_alternative_cards()
+        self.no_alternatives_label.show()
+
         self.reason_label.setText(
             "Recommendation details will appear here."
         )
         self.table.setSortingEnabled(False)
         self.table.setRowCount(0)
-        self.table.setSortingEnabled(True)
 
     def set_running(self, simulations: int, player_count: int) -> None:
         self.status_label.setText(
@@ -303,6 +371,8 @@ class CommandCenterWidget(QWidget):
             f"Analysis completed in {runtime:.1f} seconds."
         )
 
+        # Preserve the engine's ranking exactly. Sorting remains disabled so
+        # Rank 1 can never be moved below Rank 2 by Qt's table sorting state.
         self.table.setSortingEnabled(False)
         self.table.setRowCount(len(recommendations))
 
@@ -336,7 +406,7 @@ class CommandCenterWidget(QWidget):
                 )
                 self.table.setItem(row, column, item)
 
-        self.table.setSortingEnabled(True)
+        self._populate_alternative_cards()
 
         if recommendations:
             self.display_recommendation(recommendations[0])
@@ -344,6 +414,90 @@ class CommandCenterWidget(QWidget):
         else:
             self.reset()
             self.status_label.setText("No recommendations were produced.")
+
+    def _populate_alternative_cards(self) -> None:
+        self._clear_alternative_cards()
+
+        alternatives = self.current_recommendations[1:4]
+        if not alternatives:
+            self.no_alternatives_label.show()
+            return
+
+        self.no_alternatives_label.hide()
+
+        for rank, recommendation in enumerate(alternatives, start=2):
+            position = recommendation.position.upper()
+            position_color = POSITION_COLORS.get(position, "#94a3b8")
+            survival_text = (
+                f"{recommendation.survival_probability:.0%} survives"
+                if recommendation.survival_probability is not None
+                else "Usually gone"
+            )
+
+            button = QPushButton()
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Fixed,
+            )
+            button.setMinimumHeight(64)
+            button.setText(
+                f"#{rank}  {recommendation.player_name}   "
+                f"{position}\n"
+                f"{recommendation.score:.0f}/100  •  "
+                f"{recommendation.grade}  •  "
+                f"{survival_text}  •  {recommendation.action}"
+            )
+            button.setStyleSheet(
+                "QPushButton {"
+                "text-align: left;"
+                "background-color: #111827;"
+                "border: 1px solid #334155;"
+                f"border-left: 5px solid {position_color};"
+                "border-radius: 9px;"
+                "padding: 8px 12px;"
+                "font-size: 12px;"
+                "font-weight: 800;"
+                "color: #f8fafc;"
+                "}"
+                "QPushButton:hover {"
+                "background-color: #172033;"
+                "border-color: #60a5fa;"
+                "}"
+                "QPushButton:pressed {"
+                "background-color: #0f172a;"
+                "}"
+            )
+            button.clicked.connect(
+                lambda checked=False, rec=recommendation: (
+                    self._select_alternative(rec)
+                )
+            )
+            self.alternatives_layout.addWidget(button)
+            self.alternative_buttons.append(button)
+
+        self.alternatives_frame.setMinimumHeight(
+            18 + (len(self.alternative_buttons) * 71)
+        )
+
+    def _select_alternative(self, recommendation) -> None:
+        self.display_recommendation(recommendation)
+
+        for row in range(self.table.rowCount()):
+            player_item = self.table.item(row, 1)
+            if (
+                player_item is not None
+                and player_item.text() == recommendation.player_name
+            ):
+                self.table.selectRow(row)
+                break
+
+    def _clear_alternative_cards(self) -> None:
+        for button in self.alternative_buttons:
+            self.alternatives_layout.removeWidget(button)
+            button.deleteLater()
+        self.alternative_buttons = []
+        self.alternatives_frame.setMinimumHeight(92)
 
     def display_recommendation(self, recommendation) -> None:
         position = recommendation.position.upper()
@@ -365,7 +519,7 @@ class CommandCenterWidget(QWidget):
             "font-weight: 900; padding: 7px 10px;"
         )
 
-        self.score_label.setText(f"{recommendation.score:.1f}")
+        self.score_label.setText(f"{recommendation.score:.0f}/100")
         self.grade_label.setText(recommendation.grade)
         self.grade_label.setStyleSheet(
             f"color: {self._grade_color(recommendation.grade)};"
@@ -424,7 +578,7 @@ class CommandCenterWidget(QWidget):
             progress_bar, value_label = self.breakdown_rows[name]
             percentage = (value / maximum * 100.0) if maximum else 0.0
             progress_bar.setValue(round(percentage))
-            value_label.setText(f"{value:.1f}/{maximum:.0f}")
+            value_label.setText(f"{value:.1f} / {maximum:.0f}")
 
         self.reason_label.setText(
             "\n".join(
