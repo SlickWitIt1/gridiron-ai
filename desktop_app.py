@@ -7,11 +7,16 @@ from PySide6.QtCore import (
     Qt,
     Signal,
 )
-from PySide6.QtGui import QColor
+from PySide6.QtGui import (
+    QAction,
+    QColor,
+    QKeySequence,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -35,6 +40,7 @@ from wait_analyzer import WaitAnalyzer
 
 
 DEFAULT_SIMULATIONS = 100
+
 POSITION_FILTERS = (
     "ALL",
     "QB",
@@ -44,6 +50,146 @@ POSITION_FILTERS = (
     "DST",
     "K",
 )
+
+DARK_STYLESHEET = """
+QMainWindow,
+QWidget {
+    background-color: #111318;
+    color: #f2f4f8;
+    font-size: 14px;
+}
+
+QLabel#TitleLabel {
+    font-size: 30px;
+    font-weight: 800;
+    color: #f8fafc;
+    padding: 12px;
+}
+
+QLabel#StatusLabel {
+    background-color: #1b2028;
+    border: 1px solid #313845;
+    border-radius: 8px;
+    font-size: 17px;
+    font-weight: 700;
+    padding: 10px;
+}
+
+QLabel#PanelHeading {
+    font-size: 18px;
+    font-weight: 700;
+    color: #ffffff;
+    padding-top: 4px;
+    padding-bottom: 4px;
+}
+
+QLabel#TopPickLabel {
+    background-color: #1b2028;
+    border: 1px solid #313845;
+    border-radius: 8px;
+    font-size: 18px;
+    font-weight: 700;
+    padding: 10px;
+}
+
+QLabel#ReasonLabel {
+    background-color: #171a20;
+    border: 1px solid #313845;
+    border-radius: 8px;
+    padding: 12px;
+}
+
+QLineEdit,
+QComboBox,
+QSpinBox {
+    background-color: #1c2027;
+    border: 1px solid #3a4250;
+    border-radius: 6px;
+    padding: 7px;
+    color: #f8fafc;
+}
+
+QLineEdit:focus,
+QComboBox:focus,
+QSpinBox:focus {
+    border: 1px solid #60a5fa;
+}
+
+QListWidget,
+QTableWidget {
+    background-color: #15181e;
+    alternate-background-color: #1a1e25;
+    border: 1px solid #313845;
+    border-radius: 8px;
+    gridline-color: #313845;
+    color: #f8fafc;
+}
+
+QListWidget::item {
+    padding: 7px;
+    border-bottom: 1px solid #232933;
+}
+
+QListWidget::item:selected,
+QTableWidget::item:selected {
+    background-color: #2563eb;
+    color: #ffffff;
+}
+
+QHeaderView::section {
+    background-color: #20252e;
+    color: #f8fafc;
+    border: 0;
+    border-right: 1px solid #313845;
+    border-bottom: 1px solid #313845;
+    padding: 7px;
+    font-weight: 700;
+}
+
+QPushButton {
+    background-color: #2563eb;
+    color: #ffffff;
+    border: 0;
+    border-radius: 7px;
+    padding: 9px 12px;
+    font-weight: 700;
+}
+
+QPushButton:hover {
+    background-color: #3b82f6;
+}
+
+QPushButton:pressed {
+    background-color: #1d4ed8;
+}
+
+QPushButton:disabled {
+    background-color: #343b47;
+    color: #8c95a3;
+}
+
+QPushButton#DangerButton {
+    background-color: #b91c1c;
+}
+
+QPushButton#DangerButton:hover {
+    background-color: #dc2626;
+}
+
+QPushButton#SecondaryButton {
+    background-color: #374151;
+}
+
+QPushButton#SecondaryButton:hover {
+    background-color: #4b5563;
+}
+
+QStatusBar {
+    background-color: #171a20;
+    color: #cbd5e1;
+    border-top: 1px solid #313845;
+}
+"""
 
 
 class RecommendationWorker(QObject):
@@ -64,9 +210,7 @@ class RecommendationWorker(QObject):
 
         self.candidate_names = candidate_names
         self.draft_slot = draft_slot
-        self.completed_player_names = (
-            completed_player_names
-        )
+        self.completed_player_names = completed_player_names
         self.current_pick = current_pick
         self.next_pick = next_pick
         self.simulations = simulations
@@ -78,34 +222,24 @@ class RecommendationWorker(QObject):
 
             wait_analyzer = WaitAnalyzer()
 
-            wait_results = (
-                wait_analyzer.analyze_live_players(
-                    player_names=self.candidate_names,
-                    draft_slot=self.draft_slot,
-                    completed_player_names=(
-                        self.completed_player_names
-                    ),
-                    current_pick=self.current_pick,
-                    next_pick=self.next_pick,
-                    simulations=self.simulations,
-                )
+            wait_results = wait_analyzer.analyze_live_players(
+                player_names=self.candidate_names,
+                draft_slot=self.draft_slot,
+                completed_player_names=self.completed_player_names,
+                current_pick=self.current_pick,
+                next_pick=self.next_pick,
+                simulations=self.simulations,
             )
 
-            recommendation_engine = (
-                RecommendationEngine(
-                    players=wait_analyzer.players,
-                    projections=load_projections(),
-                    approved_players=(
-                        wait_analyzer.approved_players
-                    ),
-                )
+            recommendation_engine = RecommendationEngine(
+                players=wait_analyzer.players,
+                projections=load_projections(),
+                approved_players=wait_analyzer.approved_players,
             )
 
-            recommendations = (
-                recommendation_engine.recommend(
-                    wait_results=wait_results,
-                    user_team=self.user_team,
-                )
+            recommendations = recommendation_engine.recommend(
+                wait_results=wait_results,
+                user_team=self.user_team,
             )
 
             runtime = perf_counter() - start_time
@@ -116,9 +250,7 @@ class RecommendationWorker(QObject):
             )
 
         except Exception as error:
-            self.failed.emit(
-                str(error)
-            )
+            self.failed.emit(str(error))
 
 
 class GridironWindow(QMainWindow):
@@ -130,8 +262,13 @@ class GridironWindow(QMainWindow):
         )
 
         self.resize(
-            1450,
-            850,
+            1500,
+            900,
+        )
+
+        self.setMinimumSize(
+            1100,
+            700,
         )
 
         self.store = DraftSessionStore()
@@ -141,19 +278,22 @@ class GridironWindow(QMainWindow):
 
         self.approved_players = load_my_guys()
 
-        self.recommendation_thread: (
-            QThread | None
-        ) = None
+        self.recommendation_thread: QThread | None = None
+        self.recommendation_worker: RecommendationWorker | None = None
 
-        self.recommendation_worker: (
-            RecommendationWorker | None
-        ) = None
+        self.current_recommendations = []
 
         self.setup_ui()
+        self.setup_actions()
         self.show_start_screen()
+
+        self.statusBar().showMessage(
+            "Gridiron AI ready."
+        )
 
     def setup_ui(self) -> None:
         central_widget = QWidget()
+
         self.setCentralWidget(
             central_widget
         )
@@ -162,20 +302,27 @@ class GridironWindow(QMainWindow):
             central_widget
         )
 
+        self.main_layout.setContentsMargins(
+            16,
+            12,
+            16,
+            12,
+        )
+
+        self.main_layout.setSpacing(
+            10
+        )
+
         self.title_label = QLabel(
             "GRIDIRON AI"
         )
 
-        self.title_label.setAlignment(
-            Qt.AlignmentFlag.AlignCenter
+        self.title_label.setObjectName(
+            "TitleLabel"
         )
 
-        self.title_label.setStyleSheet(
-            """
-            font-size: 30px;
-            font-weight: bold;
-            padding: 12px;
-            """
+        self.title_label.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
         )
 
         self.main_layout.addWidget(
@@ -184,16 +331,12 @@ class GridironWindow(QMainWindow):
 
         self.status_label = QLabel()
 
-        self.status_label.setAlignment(
-            Qt.AlignmentFlag.AlignCenter
+        self.status_label.setObjectName(
+            "StatusLabel"
         )
 
-        self.status_label.setStyleSheet(
-            """
-            font-size: 17px;
-            font-weight: bold;
-            padding: 8px;
-            """
+        self.status_label.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
         )
 
         self.main_layout.addWidget(
@@ -202,6 +345,10 @@ class GridironWindow(QMainWindow):
 
         self.content_layout = QHBoxLayout()
 
+        self.content_layout.setSpacing(
+            14
+        )
+
         self.main_layout.addLayout(
             self.content_layout
         )
@@ -209,6 +356,18 @@ class GridironWindow(QMainWindow):
         self.left_panel = QVBoxLayout()
         self.middle_panel = QVBoxLayout()
         self.right_panel = QVBoxLayout()
+
+        self.left_panel.setSpacing(
+            8
+        )
+
+        self.middle_panel.setSpacing(
+            8
+        )
+
+        self.right_panel.setSpacing(
+            8
+        )
 
         self.content_layout.addLayout(
             self.left_panel,
@@ -229,24 +388,49 @@ class GridironWindow(QMainWindow):
         self.setup_middle_panel()
         self.setup_right_panel()
 
+    def setup_actions(self) -> None:
+        undo_action = QAction(
+            "Undo Last Pick",
+            self,
+        )
+
+        undo_action.setShortcut(
+            QKeySequence.StandardKey.Undo
+        )
+
+        undo_action.triggered.connect(
+            self.undo_last_pick
+        )
+
+        self.addAction(
+            undo_action
+        )
+
+    def panel_heading(
+        self,
+        text: str,
+    ) -> QLabel:
+        label = QLabel(
+            text
+        )
+
+        label.setObjectName(
+            "PanelHeading"
+        )
+
+        return label
+
     def setup_left_panel(self) -> None:
-        heading = QLabel(
-            "Draft Setup"
-        )
-
-        heading.setStyleSheet(
-            """
-            font-size: 18px;
-            font-weight: bold;
-            """
+        self.left_panel.addWidget(
+            self.panel_heading(
+                "Draft Setup"
+            )
         )
 
         self.left_panel.addWidget(
-            heading
-        )
-
-        self.left_panel.addWidget(
-            QLabel("Your draft slot")
+            QLabel(
+                "Your draft slot"
+            )
         )
 
         self.slot_selector = QComboBox()
@@ -301,6 +485,10 @@ class GridironWindow(QMainWindow):
             "Resume Saved Draft"
         )
 
+        self.resume_button.setObjectName(
+            "SecondaryButton"
+        )
+
         self.resume_button.clicked.connect(
             self.resume_saved_draft
         )
@@ -309,8 +497,28 @@ class GridironWindow(QMainWindow):
             self.resume_button
         )
 
+        self.undo_button = QPushButton(
+            "Undo Last Pick"
+        )
+
+        self.undo_button.setObjectName(
+            "SecondaryButton"
+        )
+
+        self.undo_button.clicked.connect(
+            self.undo_last_pick
+        )
+
+        self.left_panel.addWidget(
+            self.undo_button
+        )
+
         self.delete_save_button = QPushButton(
             "Delete Saved Draft"
+        )
+
+        self.delete_save_button.setObjectName(
+            "DangerButton"
         )
 
         self.delete_save_button.clicked.connect(
@@ -322,22 +530,13 @@ class GridironWindow(QMainWindow):
         )
 
         self.left_panel.addSpacing(
-            20
-        )
-
-        roster_heading = QLabel(
-            "Your Roster"
-        )
-
-        roster_heading.setStyleSheet(
-            """
-            font-size: 18px;
-            font-weight: bold;
-            """
+            18
         )
 
         self.left_panel.addWidget(
-            roster_heading
+            self.panel_heading(
+                "Your Roster"
+            )
         )
 
         self.roster_list = QListWidget()
@@ -357,19 +556,10 @@ class GridironWindow(QMainWindow):
         )
 
     def setup_middle_panel(self) -> None:
-        heading = QLabel(
-            "Available Players"
-        )
-
-        heading.setStyleSheet(
-            """
-            font-size: 18px;
-            font-weight: bold;
-            """
-        )
-
         self.middle_panel.addWidget(
-            heading
+            self.panel_heading(
+                "Available Players"
+            )
         )
 
         filter_layout = QHBoxLayout()
@@ -417,6 +607,10 @@ class GridironWindow(QMainWindow):
             self.update_selected_players
         )
 
+        self.available_list.itemDoubleClicked.connect(
+            self.record_double_clicked_player
+        )
+
         self.middle_panel.addWidget(
             self.available_list
         )
@@ -425,18 +619,11 @@ class GridironWindow(QMainWindow):
             "Selected candidates: 0"
         )
 
-        self.selected_player_label.setStyleSheet(
-            """
-            font-size: 15px;
-            padding: 8px;
-            """
-        )
-
         self.middle_panel.addWidget(
             self.selected_player_label
         )
 
-        self.button_layout = QHBoxLayout()
+        button_layout = QHBoxLayout()
 
         self.record_pick_button = QPushButton(
             "Record Pick"
@@ -450,7 +637,7 @@ class GridironWindow(QMainWindow):
             False
         )
 
-        self.button_layout.addWidget(
+        button_layout.addWidget(
             self.record_pick_button
         )
 
@@ -466,23 +653,16 @@ class GridironWindow(QMainWindow):
             False
         )
 
-        self.button_layout.addWidget(
+        button_layout.addWidget(
             self.analyze_button
         )
 
         self.middle_panel.addLayout(
-            self.button_layout
+            button_layout
         )
 
         legend = QLabel(
-            "★ = My Guy"
-        )
-
-        legend.setStyleSheet(
-            """
-            font-weight: bold;
-            padding: 4px;
-            """
+            "★ My Guy   •   Double-click a player to record the pick"
         )
 
         self.middle_panel.addWidget(
@@ -490,24 +670,14 @@ class GridironWindow(QMainWindow):
         )
 
     def setup_right_panel(self) -> None:
-        heading = QLabel(
-            "Recommendations"
-        )
-
-        heading.setStyleSheet(
-            """
-            font-size: 18px;
-            font-weight: bold;
-            """
-        )
-
         self.right_panel.addWidget(
-            heading
+            self.panel_heading(
+                "Recommendations"
+            )
         )
 
         self.recommendation_status_label = QLabel(
-            "Select players and click "
-            "Analyze Selected."
+            "Select players and click Analyze Selected."
         )
 
         self.recommendation_status_label.setWordWrap(
@@ -535,8 +705,20 @@ class GridironWindow(QMainWindow):
             )
         )
 
+        self.recommendation_table.setAlternatingRowColors(
+            True
+        )
+
+        self.recommendation_table.setSortingEnabled(
+            True
+        )
+
         self.recommendation_table.setSelectionBehavior(
             QTableWidget.SelectionBehavior.SelectRows
+        )
+
+        self.recommendation_table.setSelectionMode(
+            QTableWidget.SelectionMode.SingleSelection
         )
 
         self.recommendation_table.setEditTriggers(
@@ -547,9 +729,23 @@ class GridironWindow(QMainWindow):
             self.show_selected_recommendation
         )
 
-        self.recommendation_table.horizontalHeader().setStretchLastSection(
-            True
+        header = self.recommendation_table.horizontalHeader()
+
+        header.setSectionResizeMode(
+            0,
+            QHeaderView.ResizeMode.ResizeToContents,
         )
+
+        header.setSectionResizeMode(
+            1,
+            QHeaderView.ResizeMode.Stretch,
+        )
+
+        for column in range(2, 7):
+            header.setSectionResizeMode(
+                column,
+                QHeaderView.ResizeMode.ResizeToContents,
+            )
 
         self.right_panel.addWidget(
             self.recommendation_table
@@ -559,12 +755,8 @@ class GridironWindow(QMainWindow):
             "Top pick: None"
         )
 
-        self.top_pick_label.setStyleSheet(
-            """
-            font-size: 18px;
-            font-weight: bold;
-            padding: 8px;
-            """
+        self.top_pick_label.setObjectName(
+            "TopPickLabel"
         )
 
         self.right_panel.addWidget(
@@ -572,39 +764,42 @@ class GridironWindow(QMainWindow):
         )
 
         self.reason_label = QLabel(
-            "Recommendation details will "
-            "appear here."
+            "Recommendation details will appear here."
+        )
+
+        self.reason_label.setObjectName(
+            "ReasonLabel"
         )
 
         self.reason_label.setWordWrap(
             True
         )
 
-        self.reason_label.setStyleSheet(
-            """
-            padding: 10px;
-            border: 1px solid gray;
-            """
-        )
-
         self.right_panel.addWidget(
             self.reason_label
         )
 
-        self.current_recommendations = []
-
     def show_start_screen(self) -> None:
         self.session = None
+        self.current_recommendations = []
 
         self.status_label.setText(
-            "Start a new draft or resume "
-            "a saved session."
+            "Start a new draft or resume a saved session."
         )
 
         self.available_list.clear()
         self.roster_list.clear()
+
+        self.recommendation_table.setSortingEnabled(
+            False
+        )
+
         self.recommendation_table.setRowCount(
             0
+        )
+
+        self.recommendation_table.setSortingEnabled(
+            True
         )
 
         self.selected_player_label.setText(
@@ -620,8 +815,7 @@ class GridironWindow(QMainWindow):
         )
 
         self.reason_label.setText(
-            "Recommendation details will "
-            "appear here."
+            "Recommendation details will appear here."
         )
 
         self.record_pick_button.setEnabled(
@@ -629,6 +823,10 @@ class GridironWindow(QMainWindow):
         )
 
         self.analyze_button.setEnabled(
+            False
+        )
+
+        self.undo_button.setEnabled(
             False
         )
 
@@ -653,10 +851,7 @@ class GridironWindow(QMainWindow):
                 | QMessageBox.StandardButton.No,
             )
 
-            if (
-                choice
-                != QMessageBox.StandardButton.Yes
-            ):
+            if choice != QMessageBox.StandardButton.Yes:
                 return
 
             self.store.delete()
@@ -673,8 +868,14 @@ class GridironWindow(QMainWindow):
             user_team_number=draft_slot
         )
 
+        self.clear_recommendations()
         self.save_active_session()
         self.refresh_draft_view()
+
+        self.statusBar().showMessage(
+            f"New draft started from Slot {draft_slot}.",
+            5000,
+        )
 
     def resume_saved_draft(self) -> None:
         try:
@@ -685,14 +886,12 @@ class GridironWindow(QMainWindow):
             ]
 
             self.session = LiveDraftSession(
-                user_team_number=(
-                    saved_data["draft_slot"]
-                ),
-                completed_player_names=(
-                    saved_data[
-                        "drafted_player_names"
-                    ]
-                ),
+                user_team_number=saved_data[
+                    "draft_slot"
+                ],
+                completed_player_names=saved_data[
+                    "drafted_player_names"
+                ],
             )
 
         except (
@@ -717,7 +916,16 @@ class GridironWindow(QMainWindow):
             self.simulations
         )
 
+        self.clear_recommendations()
         self.refresh_draft_view()
+
+        self.statusBar().showMessage(
+            (
+                f"Saved draft restored at "
+                f"Pick {self.session.current_pick}."
+            ),
+            5000,
+        )
 
     def delete_saved_draft(self) -> None:
         if not self.store.exists():
@@ -726,31 +934,28 @@ class GridironWindow(QMainWindow):
         choice = QMessageBox.question(
             self,
             "Delete saved draft?",
-            (
-                "This permanently deletes "
-                "the saved live draft."
-            ),
+            "This permanently deletes the saved live draft.",
             QMessageBox.StandardButton.Yes
             | QMessageBox.StandardButton.No,
         )
 
-        if (
-            choice
-            != QMessageBox.StandardButton.Yes
-        ):
+        if choice != QMessageBox.StandardButton.Yes:
             return
 
         self.store.delete()
         self.show_start_screen()
+
+        self.statusBar().showMessage(
+            "Saved draft deleted.",
+            5000,
+        )
 
     def save_active_session(self) -> None:
         if self.session is None:
             return
 
         self.store.save(
-            draft_slot=(
-                self.session.user_team_number
-            ),
+            draft_slot=self.session.user_team_number,
             simulations=self.simulations,
             drafted_player_names=(
                 self.session.completed_player_names
@@ -764,7 +969,7 @@ class GridironWindow(QMainWindow):
 
         if self.session.is_complete:
             self.status_label.setText(
-                "Draft complete."
+                "DRAFT COMPLETE"
             )
 
             self.record_pick_button.setEnabled(
@@ -778,25 +983,38 @@ class GridironWindow(QMainWindow):
             self.store.delete()
 
         else:
+            current_pick = self.session.current_pick
+
+            current_round = (
+                (current_pick - 1)
+                // self.session.league.num_teams
+            ) + 1
+
             turn_text = (
                 "YOUR PICK"
                 if self.session.is_user_turn
                 else (
-                    f"Team "
+                    f"TEAM "
                     f"{self.session.current_team_number}"
                 )
             )
 
             self.status_label.setText(
                 (
-                    f"Overall Pick "
-                    f"{self.session.current_pick} "
-                    f"— {turn_text}"
+                    f"ROUND {current_round}  •  "
+                    f"OVERALL PICK {current_pick}  •  "
+                    f"{turn_text}"
                 )
             )
 
         self.refresh_available_players()
         self.refresh_roster()
+
+        self.undo_button.setEnabled(
+            bool(
+                self.session.draft_results
+            )
+        )
 
         self.resume_button.setEnabled(
             self.store.exists()
@@ -820,9 +1038,7 @@ class GridironWindow(QMainWindow):
             self.position_filter.currentText()
         )
 
-        for player in (
-            self.session.available_players()
-        ):
+        for player in self.session.available_players():
             normalized_name = normalize_name(
                 player.name
             )
@@ -850,7 +1066,11 @@ class GridironWindow(QMainWindow):
                 in self.approved_players
             )
 
-            star = "★ " if is_my_guy else ""
+            star = (
+                "★ "
+                if is_my_guy
+                else ""
+            )
 
             item = QListWidgetItem(
                 (
@@ -867,11 +1087,9 @@ class GridironWindow(QMainWindow):
             )
 
             if is_my_guy:
-                item.setBackground(
+                item.setForeground(
                     QColor(
-                        205,
-                        245,
-                        210,
+                        "#86efac"
                     )
                 )
 
@@ -901,9 +1119,13 @@ class GridironWindow(QMainWindow):
                 in self.approved_players
             )
 
-            star = "★ " if is_my_guy else ""
+            star = (
+                "★ "
+                if is_my_guy
+                else ""
+            )
 
-            self.roster_list.addItem(
+            item = QListWidgetItem(
                 (
                     f"{star}"
                     f"{player.position:<4} | "
@@ -911,22 +1133,26 @@ class GridironWindow(QMainWindow):
                 )
             )
 
+            if is_my_guy:
+                item.setForeground(
+                    QColor(
+                        "#86efac"
+                    )
+                )
+
+            self.roster_list.addItem(
+                item
+            )
+
         self.roster_summary_label.setText(
             (
-                f"Players: "
-                f"{len(team.players)}/16\n"
-                f"QB: "
-                f"{team.count_position('QB')} | "
-                f"RB: "
-                f"{team.count_position('RB')} | "
-                f"WR: "
-                f"{team.count_position('WR')} | "
-                f"TE: "
-                f"{team.count_position('TE')} | "
-                f"DST: "
-                f"{team.count_position('DST')} | "
-                f"K: "
-                f"{team.count_position('K')}"
+                f"Players: {len(team.players)}/16\n"
+                f"QB {team.count_position('QB')}  |  "
+                f"RB {team.count_position('RB')}  |  "
+                f"WR {team.count_position('WR')}\n"
+                f"TE {team.count_position('TE')}  |  "
+                f"DST {team.count_position('DST')}  |  "
+                f"K {team.count_position('K')}"
             )
         )
 
@@ -936,11 +1162,12 @@ class GridironWindow(QMainWindow):
         )
 
         self.selected_player_label.setText(
-            f"Selected candidates: "
-            f"{selected_count}"
+            f"Selected candidates: {selected_count}"
         )
 
-        has_selection = selected_count > 0
+        has_selection = (
+            selected_count > 0
+        )
 
         self.record_pick_button.setEnabled(
             has_selection
@@ -950,8 +1177,7 @@ class GridironWindow(QMainWindow):
             has_selection
             and self.session is not None
             and self.session.is_user_turn
-            and self.session.next_user_pick
-            is not None
+            and self.session.next_user_pick is not None
         )
 
         self.analyze_button.setEnabled(
@@ -965,15 +1191,25 @@ class GridironWindow(QMainWindow):
             item.data(
                 Qt.ItemDataRole.UserRole
             )
-            for item in (
-                self.available_list.selectedItems()
-            )
+            for item in self.available_list.selectedItems()
         )
 
-    def record_selected_player(self) -> None:
+    def record_double_clicked_player(
+        self,
+        item: QListWidgetItem,
+    ) -> None:
         if self.session is None:
             return
 
+        player_name = item.data(
+            Qt.ItemDataRole.UserRole
+        )
+
+        self.record_player_name(
+            player_name
+        )
+
+    def record_selected_player(self) -> None:
         selected_names = (
             self.selected_player_names()
         )
@@ -993,13 +1229,39 @@ class GridironWindow(QMainWindow):
 
             return
 
-        player_name = selected_names[0]
+        self.record_player_name(
+            selected_names[0]
+        )
+
+    def record_player_name(
+        self,
+        player_name: str,
+    ) -> None:
+        if self.session is None:
+            return
+
+        team_number = (
+            self.session.current_team_number
+        )
+
+        choice = QMessageBox.question(
+            self,
+            "Record draft pick?",
+            (
+                f"Record {player_name} for "
+                f"Team {team_number} at "
+                f"Pick {self.session.current_pick}?"
+            ),
+            QMessageBox.StandardButton.Yes
+            | QMessageBox.StandardButton.No,
+        )
+
+        if choice != QMessageBox.StandardButton.Yes:
+            return
 
         try:
-            draft_pick = (
-                self.session.record_pick(
-                    player_name
-                )
+            draft_pick = self.session.record_pick(
+                player_name
             )
 
         except (
@@ -1015,24 +1277,51 @@ class GridironWindow(QMainWindow):
             return
 
         self.save_active_session()
+        self.clear_recommendations()
+        self.refresh_draft_view()
 
-        self.recommendation_table.setRowCount(
-            0
-        )
-
-        self.current_recommendations = []
-
-        QMessageBox.information(
-            self,
-            "Pick recorded",
+        self.statusBar().showMessage(
             (
                 f"Pick {draft_pick.overall}: "
-                f"{draft_pick.player.name}\n"
-                f"Team {draft_pick.team_number}"
+                f"{draft_pick.player.name} "
+                f"recorded for "
+                f"Team {draft_pick.team_number}."
+            ),
+            6000,
+        )
+
+    def undo_last_pick(self) -> None:
+        if (
+            self.session is None
+            or not self.session.draft_results
+        ):
+            return
+
+        completed_names = list(
+            self.session.completed_player_names
+        )
+
+        removed_player = (
+            completed_names.pop()
+        )
+
+        self.session = LiveDraftSession(
+            user_team_number=(
+                self.session.user_team_number
+            ),
+            completed_player_names=tuple(
+                completed_names
             ),
         )
 
+        self.save_active_session()
+        self.clear_recommendations()
         self.refresh_draft_view()
+
+        self.statusBar().showMessage(
+            f"Undid the selection of {removed_player}.",
+            6000,
+        )
 
     def analyze_selected_players(self) -> None:
         if self.session is None:
@@ -1087,32 +1376,33 @@ class GridironWindow(QMainWindow):
 
         self.recommendation_status_label.setText(
             (
-                f"Running {self.simulations} "
-                f"simulations for "
-                f"{len(candidate_names)} players..."
+                f"Running {self.simulations} simulations "
+                f"for {len(candidate_names)} players..."
             )
+        )
+
+        self.statusBar().showMessage(
+            "Recommendation analysis running..."
         )
 
         self.recommendation_thread = QThread()
 
-        self.recommendation_worker = (
-            RecommendationWorker(
-                candidate_names=candidate_names,
-                draft_slot=(
-                    self.session.user_team_number
-                ),
-                completed_player_names=(
-                    self.session.completed_player_names
-                ),
-                current_pick=(
-                    self.session.current_pick
-                ),
-                next_pick=next_pick,
-                simulations=self.simulations,
-                user_team=(
-                    self.session.state.user_team
-                ),
-            )
+        self.recommendation_worker = RecommendationWorker(
+            candidate_names=candidate_names,
+            draft_slot=(
+                self.session.user_team_number
+            ),
+            completed_player_names=(
+                self.session.completed_player_names
+            ),
+            current_pick=(
+                self.session.current_pick
+            ),
+            next_pick=next_pick,
+            simulations=self.simulations,
+            user_team=(
+                self.session.state.user_team
+            ),
         )
 
         self.recommendation_worker.moveToThread(
@@ -1154,6 +1444,10 @@ class GridironWindow(QMainWindow):
             recommendations
         )
 
+        self.recommendation_table.setSortingEnabled(
+            False
+        )
+
         self.recommendation_table.setRowCount(
             len(recommendations)
         )
@@ -1185,17 +1479,39 @@ class GridironWindow(QMainWindow):
                     value
                 )
 
+                if column in {
+                    0,
+                    2,
+                    3,
+                    4,
+                    5,
+                }:
+                    item.setTextAlignment(
+                        Qt.AlignmentFlag.AlignCenter
+                    )
+
+                self.apply_recommendation_color(
+                    item=item,
+                    column=column,
+                    grade=recommendation.grade,
+                    action=recommendation.action,
+                )
+
                 self.recommendation_table.setItem(
                     row,
                     column,
                     item,
                 )
 
-        self.recommendation_table.resizeColumnsToContents()
+        self.recommendation_table.setSortingEnabled(
+            True
+        )
 
         self.recommendation_status_label.setText(
-            f"Analysis completed in "
-            f"{runtime:.1f} seconds."
+            (
+                f"Analysis completed in "
+                f"{runtime:.1f} seconds."
+            )
         )
 
         if recommendations:
@@ -1203,10 +1519,8 @@ class GridironWindow(QMainWindow):
 
             self.top_pick_label.setText(
                 (
-                    f"Top pick: "
-                    f"{top.player_name} "
-                    f"({top.position}) — "
-                    f"{top.grade}"
+                    f"Top pick: {top.player_name} "
+                    f"({top.position}) — {top.grade}"
                 )
             )
 
@@ -1221,7 +1535,75 @@ class GridironWindow(QMainWindow):
                 0
             )
 
+        self.statusBar().showMessage(
+            (
+                f"Analysis finished in "
+                f"{runtime:.1f} seconds."
+            ),
+            6000,
+        )
+
         self.update_selected_players()
+
+    def apply_recommendation_color(
+        self,
+        item: QTableWidgetItem,
+        column: int,
+        grade: str,
+        action: str,
+    ) -> None:
+        if column == 4:
+            if grade in {
+                "A+",
+                "A",
+            }:
+                item.setForeground(
+                    QColor(
+                        "#4ade80"
+                    )
+                )
+
+            elif grade in {
+                "B+",
+                "B",
+            }:
+                item.setForeground(
+                    QColor(
+                        "#facc15"
+                    )
+                )
+
+            else:
+                item.setForeground(
+                    QColor(
+                        "#fb7185"
+                    )
+                )
+
+        if column == 6:
+            if action == "DRAFT NOW":
+                item.setForeground(
+                    QColor(
+                        "#4ade80"
+                    )
+                )
+
+            elif action in {
+                "RISKY TO WAIT",
+                "CAN PROBABLY WAIT",
+            }:
+                item.setForeground(
+                    QColor(
+                        "#facc15"
+                    )
+                )
+
+            else:
+                item.setForeground(
+                    QColor(
+                        "#93c5fd"
+                    )
+                )
 
     def handle_recommendation_error(
         self,
@@ -1235,6 +1617,11 @@ class GridironWindow(QMainWindow):
             self,
             "Recommendation error",
             error_message,
+        )
+
+        self.statusBar().showMessage(
+            "Recommendation analysis failed.",
+            6000,
         )
 
         self.update_selected_players()
@@ -1255,7 +1642,8 @@ class GridironWindow(QMainWindow):
         self,
     ) -> None:
         selected_rows = (
-            self.recommendation_table.selectionModel()
+            self.recommendation_table
+            .selectionModel()
             .selectedRows()
         )
 
@@ -1264,16 +1652,31 @@ class GridironWindow(QMainWindow):
 
         row = selected_rows[0].row()
 
-        if not (
-            0
-            <= row
-            < len(self.current_recommendations)
-        ):
+        player_item = (
+            self.recommendation_table.item(
+                row,
+                1,
+            )
+        )
+
+        if player_item is None:
             return
 
-        recommendation = (
-            self.current_recommendations[row]
+        player_name = (
+            player_item.text()
         )
+
+        recommendation = next(
+            (
+                item
+                for item in self.current_recommendations
+                if item.player_name == player_name
+            ),
+            None,
+        )
+
+        if recommendation is None:
+            return
 
         self.top_pick_label.setText(
             (
@@ -1287,20 +1690,46 @@ class GridironWindow(QMainWindow):
         self.reason_label.setText(
             "\n".join(
                 f"• {reason}"
-                for reason
-                in recommendation.reasons
+                for reason in recommendation.reasons
             )
+        )
+
+    def clear_recommendations(self) -> None:
+        self.current_recommendations = []
+
+        self.recommendation_table.setSortingEnabled(
+            False
+        )
+
+        self.recommendation_table.setRowCount(
+            0
+        )
+
+        self.recommendation_table.setSortingEnabled(
+            True
+        )
+
+        self.recommendation_status_label.setText(
+            "Select players and click Analyze Selected."
+        )
+
+        self.top_pick_label.setText(
+            "Top pick: None"
+        )
+
+        self.reason_label.setText(
+            "Recommendation details will appear here."
         )
 
     def closeEvent(self, event) -> None:
         self.save_active_session()
 
         if (
-            self.recommendation_thread
-            is not None
+            self.recommendation_thread is not None
             and self.recommendation_thread.isRunning()
         ):
             self.recommendation_thread.quit()
+
             self.recommendation_thread.wait(
                 3000
             )
@@ -1313,7 +1742,12 @@ def main() -> None:
         sys.argv
     )
 
+    application.setStyleSheet(
+        DARK_STYLESHEET
+    )
+
     window = GridironWindow()
+
     window.show()
 
     sys.exit(
