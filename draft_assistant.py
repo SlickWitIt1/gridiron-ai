@@ -1,5 +1,9 @@
 from time import perf_counter
 
+from projection_loader import load_projections
+from recommendation_engine import (
+    RecommendationEngine,
+)
 from wait_analyzer import WaitAnalyzer
 
 
@@ -23,13 +27,19 @@ def read_integer(
             f"{prompt}{default_text}: "
         ).strip()
 
-        if not raw_value and default is not None:
+        if (
+            not raw_value
+            and default is not None
+        ):
             return default
 
         try:
             value = int(raw_value)
+
         except ValueError:
-            print("Please enter a whole number.")
+            print(
+                "Please enter a whole number."
+            )
             continue
 
         if value < minimum:
@@ -55,14 +65,17 @@ def read_integer(
 def read_players() -> tuple[str, ...]:
     print()
     print(
-        "Enter the players you want to compare."
+        "Enter the available players "
+        "you want ranked."
     )
+
     print(
         "Separate names with commas."
     )
+
     print(
-        "Example: Josh Allen, Garrett Wilson, "
-        "Ladd McConkey"
+        "Example: Josh Allen, "
+        "Garrett Wilson, Ladd McConkey"
     )
 
     while True:
@@ -84,70 +97,108 @@ def read_players() -> tuple[str, ...]:
         )
 
 
-def recommendation(
-    survival_probability: float | None,
-) -> str:
-    if survival_probability is None:
-        return "Usually gone already"
-
-    if survival_probability < 0.25:
-        return "DRAFT NOW"
-
-    if survival_probability < 0.60:
-        return "Risky to wait"
-
-    if survival_probability < 0.85:
-        return "Probably can wait"
-
-    return "Safe to wait"
-
-
-def print_results(
-    results,
+def print_recommendations(
+    recommendations,
     current_pick: int,
     next_pick: int,
     runtime: float,
 ) -> None:
-    print("\n" + "=" * 92)
-    print(" GRIDIRON AI — DRAFT NOW OR WAIT?")
+    print("\n" + "=" * 104)
+    print(
+        " GRIDIRON AI — RECOMMENDATIONS"
+    )
+
     print(
         f" Current pick: {current_pick} | "
         f"Next pick: {next_pick}"
     )
-    print("=" * 92)
+
+    print("=" * 104)
 
     print(
-        f"{'Player':<26}"
-        f"{'Avail Now':>12}"
+        f"{'Rank':<6}"
+        f"{'Player':<25}"
+        f"{'Pos':<6}"
+        f"{'Score':>8}"
+        f"{'Grade':>8}"
         f"{'Survives':>12}"
-        f"{'Recommendation':>26}"
+        f"{'Action':>22}"
     )
 
-    print("-" * 92)
+    print("-" * 104)
 
-    for result in results:
+    for rank, recommendation in enumerate(
+        recommendations,
+        start=1,
+    ):
         survival_text = (
-            f"{result.survival_probability:.1%}"
-            if result.survival_probability
+            f"{recommendation.survival_probability:.1%}"
+            if recommendation.survival_probability
             is not None
             else "N/A"
         )
 
         print(
-            f"{result.player_name:<26}"
-            f"{result.available_now_probability:>11.1%}"
+            f"{rank:<6}"
+            f"{recommendation.player_name:<25}"
+            f"{recommendation.position:<6}"
+            f"{recommendation.score:>8.1f}"
+            f"{recommendation.grade:>8}"
             f"{survival_text:>12}"
-            f"{recommendation(result.survival_probability):>26}"
+            f"{recommendation.action:>22}"
         )
 
-    print("-" * 92)
-    print(f"Runtime: {runtime:.1f} seconds")
+    print("-" * 104)
+
+    print(
+        f"Runtime: {runtime:.1f} seconds"
+    )
+
+    if not recommendations:
+        print()
+        print(
+            "No recommendations were produced."
+        )
+
+        print(
+            "Check the player names and confirm "
+            "projection data exists."
+        )
+
+        return
+
+    top_recommendation = recommendations[0]
+
+    print("\n" + "=" * 104)
+
+    print(
+        f" TOP PICK: "
+        f"{top_recommendation.player_name} "
+        f"({top_recommendation.position})"
+    )
+
+    print(
+        f" Grade: "
+        f"{top_recommendation.grade} | "
+        f"Score: "
+        f"{top_recommendation.score:.1f} | "
+        f"Action: "
+        f"{top_recommendation.action}"
+    )
+
+    print("=" * 104)
+
+    for reason in top_recommendation.reasons:
+        print(f"- {reason}")
 
 
 def run_analysis() -> None:
-    print("\n" + "=" * 44)
-    print("       GRIDIRON AI DRAFT ASSISTANT")
-    print("=" * 44)
+    print("\n" + "=" * 48)
+    print(
+        "          GRIDIRON AI "
+        "DRAFT ASSISTANT"
+    )
+    print("=" * 48)
 
     draft_slot = read_integer(
         prompt="Your draft slot",
@@ -177,27 +228,52 @@ def run_analysis() -> None:
     player_names = read_players()
 
     print()
+
     print(
-        f"Running {simulations} counterfactual "
-        f"simulations..."
+        f"Running {simulations} "
+        f"counterfactual simulations "
+        f"and ranking "
+        f"{len(player_names)} players..."
     )
 
     start_time = perf_counter()
 
-    analyzer = WaitAnalyzer()
+    wait_analyzer = WaitAnalyzer()
 
-    results = analyzer.analyze_players(
-        player_names=player_names,
-        draft_slot=draft_slot,
-        current_pick=current_pick,
-        next_pick=next_pick,
-        simulations=simulations,
+    wait_results = (
+        wait_analyzer.analyze_players(
+            player_names=player_names,
+            draft_slot=draft_slot,
+            current_pick=current_pick,
+            next_pick=next_pick,
+            simulations=simulations,
+        )
     )
 
-    runtime = perf_counter() - start_time
+    recommendation_engine = (
+        RecommendationEngine(
+            players=wait_analyzer.players,
+            projections=load_projections(),
+            approved_players=(
+                wait_analyzer
+                .approved_players
+            ),
+        )
+    )
 
-    print_results(
-        results=results,
+    recommendations = (
+        recommendation_engine.recommend(
+            wait_results
+        )
+    )
+
+    runtime = (
+        perf_counter()
+        - start_time
+    )
+
+    print_recommendations(
+        recommendations=recommendations,
         current_pick=current_pick,
         next_pick=next_pick,
         runtime=runtime,
@@ -209,12 +285,20 @@ def main() -> None:
         run_analysis()
 
         print()
+
         again = input(
-            "Run another comparison? [y/N]: "
+            "Run another recommendation? "
+            "[y/N]: "
         ).strip().lower()
 
-        if again not in {"y", "yes"}:
-            print("\nExiting Gridiron AI.")
+        if again not in {
+            "y",
+            "yes",
+        }:
+            print(
+                "\nExiting Gridiron AI."
+            )
+
             break
 
 
