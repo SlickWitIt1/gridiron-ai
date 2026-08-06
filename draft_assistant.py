@@ -3,13 +3,28 @@ from time import perf_counter
 from live_draft import LiveDraftSession
 from preferences import normalize_name
 from projection_loader import load_projections
-from recommendation_engine import (
-    RecommendationEngine,
-)
+from recommendation_engine import RecommendationEngine
 from wait_analyzer import WaitAnalyzer
 
 
 DEFAULT_SIMULATIONS = 100
+EXIT_COMMANDS = {"q", "quit", "exit"}
+
+
+class QuitDraftAssistant(Exception):
+    """Raised when the user chooses to exit the draft assistant."""
+
+
+def read_input(prompt: str) -> str:
+    """
+    Read input and allow the user to quit from any prompt.
+    """
+    value = input(prompt).strip()
+
+    if value.lower() in EXIT_COMMANDS:
+        raise QuitDraftAssistant
+
+    return value
 
 
 def read_integer(
@@ -25,9 +40,9 @@ def read_integer(
             else ""
         )
 
-        raw_value = input(
+        raw_value = read_input(
             f"{prompt}{default_text}: "
-        ).strip()
+        )
 
         if (
             not raw_value
@@ -40,7 +55,8 @@ def read_integer(
 
         except ValueError:
             print(
-                "Please enter a whole number."
+                "Please enter a whole number, "
+                "or enter q to quit."
             )
             continue
 
@@ -72,11 +88,14 @@ def read_player_names(
     print(
         "Separate names with commas."
     )
+    print(
+        "Enter q at any time to quit."
+    )
 
     while True:
-        raw_players = input(
+        raw_players = read_input(
             "\nPlayers: "
-        ).strip()
+        )
 
         players = tuple(
             player.strip()
@@ -149,9 +168,10 @@ def enter_opponent_picks(
             f"Team {team_number}"
         )
 
-        player_name = input(
-            "Player drafted: "
-        ).strip()
+        player_name = read_input(
+            "Player drafted "
+            "(or q to quit): "
+        )
 
         if not player_name:
             print(
@@ -320,22 +340,52 @@ def print_recommendations(
     top = recommendations[0]
 
     print("\n" + "=" * 116)
+
     print(
         f" TOP PICK: "
         f"{top.player_name} "
         f"({top.position})"
     )
+
     print(
         f" Grade: {top.grade} | "
         f"Score: {top.score:.1f} | "
         f"Action: {top.action}"
     )
+
     print("=" * 116)
 
     for reason in top.reasons:
         print(
             f"- {reason}"
         )
+
+
+def record_final_user_pick(
+    session: LiveDraftSession,
+) -> None:
+    while True:
+        selected_player = read_input(
+            "Player you drafted "
+            "(or q to quit): "
+        )
+
+        try:
+            draft_pick = session.record_pick(
+                selected_player
+            )
+
+        except ValueError as error:
+            print(
+                f"Error: {error}"
+            )
+            continue
+
+        print(
+            f"Recorded your pick: "
+            f"{draft_pick.player.name}"
+        )
+        break
 
 
 def run_user_pick(
@@ -355,12 +405,8 @@ def run_user_pick(
             "\nThis is your final draft pick."
         )
 
-        selected_player = input(
-            "Player you drafted: "
-        ).strip()
-
-        session.record_pick(
-            selected_player
+        record_final_user_pick(
+            session
         )
 
         return
@@ -426,9 +472,10 @@ def run_user_pick(
     )
 
     while True:
-        selected_player = input(
-            "\nPlayer you actually drafted: "
-        ).strip()
+        selected_player = read_input(
+            "\nPlayer you actually drafted "
+            "(or q to quit): "
+        )
 
         try:
             draft_pick = session.record_pick(
@@ -448,13 +495,18 @@ def run_user_pick(
         break
 
 
-def main() -> None:
+def run_live_draft() -> None:
     print("\n" + "=" * 58)
     print(
         "           GRIDIRON AI — "
         "LIVE DRAFT MODE"
     )
     print("=" * 58)
+
+    print(
+        "\nEnter q, quit, or exit at any prompt "
+        "to close the assistant."
+    )
 
     draft_slot = read_integer(
         prompt="Your draft slot",
@@ -508,6 +560,34 @@ def main() -> None:
     print("=" * 58)
 
     print_roster(session)
+
+
+def main() -> None:
+    try:
+        run_live_draft()
+
+    except QuitDraftAssistant:
+        print("\n" + "=" * 58)
+        print(" EXITING GRIDIRON AI")
+        print("=" * 58)
+
+        print(
+            "Your draft session has ended."
+        )
+
+        print(
+            "Draft saving and loading will be "
+            "added in the next version."
+        )
+
+    except KeyboardInterrupt:
+        print("\n" + "=" * 58)
+        print(" EXITING GRIDIRON AI")
+        print("=" * 58)
+
+        print(
+            "Draft assistant stopped with Ctrl+C."
+        )
 
 
 if __name__ == "__main__":
