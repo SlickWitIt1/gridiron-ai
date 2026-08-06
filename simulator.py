@@ -1,33 +1,13 @@
-from loader import load_players
-from draft_board import DraftBoard
-from draft_engine import DraftEngine
-from league import League
+from team import Team
 
 
 def main():
 
-    print("===================================")
-    print(" Taylor Draft Simulator")
-    print("===================================")
+    team = Team(1)
 
-    print("\nLoading players...")
+    print(team.needs_position("QB"))
 
-    players = load_players()
-
-    print(f"Loaded {len(players)} players.")
-
-    board = DraftBoard(players)
-
-    league = League()
-
-    engine = DraftEngine(league, board)
-
-    engine.run()
-
-    print("\n\nFINAL ROSTERS")
-
-    for team in league.teams:
-        team.print_roster()
+    print(team.count_position("QB"))
 
 
 if __name__ == "__main__":
