@@ -14,12 +14,6 @@ class AvailabilityEngine:
         self,
         draft_results: Iterable[DraftPick],
     ) -> None:
-        """
-        Record where each drafted player was selected in one simulation.
-
-        Players who are not drafted are treated as still available after
-        the draft when availability probabilities are calculated.
-        """
         self.simulations += 1
 
         for draft_pick in draft_results:
@@ -36,9 +30,6 @@ class AvailabilityEngine:
         history: dict[str, tuple[int, ...]],
         simulations: int,
     ) -> None:
-        """
-        Merge availability data produced by another process.
-        """
         self.simulations += simulations
 
         for player_name, picks in history.items():
@@ -52,20 +43,20 @@ class AvailabilityEngine:
             for player_name, picks in self.history.items()
         }
 
-    def probability_available(
+    def available_count(
         self,
         player_name: str,
         overall_pick: int,
-    ) -> float:
+    ) -> int:
         """
-        Return the probability that a player is still available before
-        the specified overall pick.
+        Count simulations where the player is available immediately
+        before the specified overall pick.
 
         A player drafted at that pick or later counts as available.
-        A player who went undrafted also counts as available.
+        An undrafted player also counts as available.
         """
         if self.simulations == 0:
-            return 0.0
+            return 0
 
         key = normalize_name(player_name)
         drafted_picks = self.history.get(key, [])
@@ -80,21 +71,58 @@ class AvailabilityEngine:
             self.simulations - len(drafted_picks)
         )
 
-        available_count = (
-            drafted_at_or_after
-            + undrafted_count
+        return drafted_at_or_after + undrafted_count
+
+    def probability_available(
+        self,
+        player_name: str,
+        overall_pick: int,
+    ) -> float:
+        if self.simulations == 0:
+            return 0.0
+
+        return (
+            self.available_count(
+                player_name=player_name,
+                overall_pick=overall_pick,
+            )
+            / self.simulations
         )
 
-        return available_count / self.simulations
+    def survival_probability(
+        self,
+        player_name: str,
+        current_pick: int,
+        next_pick: int,
+    ) -> float | None:
+        """
+        Probability that a player survives until next_pick,
+        conditional on the player being available at current_pick.
+        """
+        if next_pick <= current_pick:
+            raise ValueError(
+                "Next pick must be later than current pick."
+            )
+
+        available_now = self.available_count(
+            player_name=player_name,
+            overall_pick=current_pick,
+        )
+
+        if available_now == 0:
+            return None
+
+        available_next = self.available_count(
+            player_name=player_name,
+            overall_pick=next_pick,
+        )
+
+        return available_next / available_now
 
     def average_pick(
         self,
         player_name: str,
     ) -> float | None:
-        """
-        Average selection number in simulations where the player
-        was drafted.
-        """
         key = normalize_name(player_name)
         picks = self.history.get(key, [])
 

@@ -25,7 +25,6 @@ def analyze_single_slot(
 @dataclass(frozen=True, slots=True)
 class DraftSlotAnalysis:
     results: list[MonteCarloResults]
-    availability: AvailabilityEngine
 
     @property
     def ranked_results(
@@ -45,6 +44,33 @@ class DraftSlotAnalysis:
         self,
     ) -> MonteCarloResults:
         return self.ranked_results[0]
+
+    def result_for_slot(
+        self,
+        draft_slot: int,
+    ) -> MonteCarloResults:
+        for result in self.results:
+            if result.draft_slot == draft_slot:
+                return result
+
+        raise ValueError(
+            f"No results found for draft slot {draft_slot}."
+        )
+
+    def availability_for_slot(
+        self,
+        draft_slot: int,
+    ) -> AvailabilityEngine:
+        result = self.result_for_slot(draft_slot)
+
+        availability = AvailabilityEngine()
+
+        availability.merge_history(
+            history=result.availability_history,
+            simulations=result.simulations,
+        )
+
+        return availability
 
 
 class DraftSlotAnalyzer:
@@ -87,19 +113,6 @@ class DraftSlotAnalyzer:
             key=lambda result: result.draft_slot
         )
 
-        combined_availability = (
-            AvailabilityEngine()
-        )
-
-        for result in results:
-            combined_availability.merge_history(
-                history=(
-                    result.availability_history
-                ),
-                simulations=result.simulations,
-            )
-
         return DraftSlotAnalysis(
-            results=results,
-            availability=combined_availability,
+            results=results
         )
