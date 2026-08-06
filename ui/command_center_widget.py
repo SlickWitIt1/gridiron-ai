@@ -131,6 +131,52 @@ class CommandCenterWidget(QWidget):
         evidence_grid.addWidget(self.expected_loss_card, 1, 1)
         layout.addLayout(evidence_grid)
 
+        breakdown_heading = QLabel("SCORE BREAKDOWN")
+        breakdown_heading.setObjectName("SubsectionHeading")
+        layout.addWidget(breakdown_heading)
+
+        self.breakdown_frame = QFrame()
+        self.breakdown_frame.setObjectName("InsightCard")
+        breakdown_layout = QGridLayout(self.breakdown_frame)
+        breakdown_layout.setContentsMargins(12, 10, 12, 10)
+        breakdown_layout.setHorizontalSpacing(10)
+        breakdown_layout.setVerticalSpacing(6)
+
+        self.breakdown_rows = {}
+        component_names = (
+            "Projection",
+            "Wait Risk",
+            "Roster Fit",
+            "Scarcity",
+            "Tier Drop",
+            "My Guy",
+        )
+
+        for row, component_name in enumerate(component_names):
+            name_label = QLabel(component_name)
+            name_label.setObjectName("InsightTitle")
+
+            progress_bar = QProgressBar()
+            progress_bar.setRange(0, 100)
+            progress_bar.setTextVisible(False)
+            progress_bar.setObjectName("ConfidenceBar")
+            progress_bar.setMaximumHeight(12)
+
+            value_label = QLabel("—")
+            value_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+            value_label.setMinimumWidth(64)
+
+            breakdown_layout.addWidget(name_label, row, 0)
+            breakdown_layout.addWidget(progress_bar, row, 1)
+            breakdown_layout.addWidget(value_label, row, 2)
+
+            self.breakdown_rows[component_name] = (
+                progress_bar,
+                value_label,
+            )
+
+        layout.addWidget(self.breakdown_frame)
+
         alternatives = QLabel("TOP ALTERNATIVES")
         alternatives.setObjectName("SubsectionHeading")
         layout.addWidget(alternatives)
@@ -231,6 +277,9 @@ class CommandCenterWidget(QWidget):
         self.roster_fit_card.value_label.setText("No analysis yet")
         self.tier_drop_card.value_label.setText("No analysis yet")
         self.expected_loss_card.value_label.setText("No analysis yet")
+        for progress_bar, value_label in self.breakdown_rows.values():
+            progress_bar.setValue(0)
+            value_label.setText("—")
         self.reason_label.setText(
             "Recommendation details will appear here."
         )
@@ -368,6 +417,15 @@ class CommandCenterWidget(QWidget):
         )
         self.tier_drop_card.value_label.setText(tier_text)
         self.expected_loss_card.value_label.setText(loss_text)
+
+        for name, value, maximum in (
+            recommendation.score_breakdown.component_items()
+        ):
+            progress_bar, value_label = self.breakdown_rows[name]
+            percentage = (value / maximum * 100.0) if maximum else 0.0
+            progress_bar.setValue(round(percentage))
+            value_label.setText(f"{value:.1f}/{maximum:.0f}")
+
         self.reason_label.setText(
             "\n".join(
                 f"• {reason}"
