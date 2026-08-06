@@ -13,96 +13,81 @@ class DecisionEngine:
         self.market = market
         self.player_scorer = PlayerScorer(market)
 
-    def eligible_players(
-        self,
-        team: Team,
-        available_players: list[Player],
-    ) -> list[Player]:
-        return [
-            player
-            for player in available_players
-            if team.can_draft(
-                base_position(player.position)
-            )
-        ]
-
     def candidate_players(
         self,
         team: Team,
-        available_players: list[Player],
+        available_names: set[str],
         approved_players: set[str] | None,
     ) -> list[Player]:
-        eligible = self.eligible_players(
-            team=team,
-            available_players=available_players,
-        )
+        candidates: list[Player] = []
+        position_counts: dict[str, int] = {
+            "QB": 0,
+            "RB": 0,
+            "WR": 0,
+            "TE": 0,
+            "DST": 0,
+            "K": 0,
+        }
 
-        if not eligible:
-            return []
-
-        # Sort once using this simulation's randomized market.
-        market_sorted = sorted(
-            eligible,
-            key=self.market.rank_for,
-        )
-
-        candidates = market_sorted[
-            :self.MARKET_CANDIDATE_WINDOW
-        ]
-
-        # Always include strong options at positions that
-        # still need to be filled, even if those positions
-        # fall outside the general candidate window.
         needed_positions = {
             position
-            for position in (
-                "QB",
-                "RB",
-                "WR",
-                "TE",
-                "DST",
-                "K",
-            )
+            for position in position_counts
             if team.needs_position(position)
         }
 
-        for position in needed_positions:
-            position_players = [
-                player
-                for player in market_sorted
-                if base_position(player.position) == position
-            ]
-
-            candidates.extend(
-                position_players[
-                    :self.POSITION_CANDIDATES
-                ]
-            )
-
-        # Your preferred players must remain visible to the
-        # decision engine even when their market rank is lower.
-        if approved_players is not None:
-            candidates.extend(
-                player
-                for player in eligible
-                if normalize_name(player.name)
-                in approved_players
-            )
-
-        # Remove duplicates while preserving order.
-        unique_candidates: list[Player] = []
-        seen_names: set[str] = set()
-
-        for player in candidates:
-            key = normalize_name(player.name)
-
-            if key in seen_names:
+        for player in self.market.sorted_players:
+            if player.name not in available_names:
                 continue
 
-            seen_names.add(key)
-            unique_candidates.append(player)
+            position = base_position(
+                player.position
+            )
 
-        return unique_candidates
+            if not team.can_draft(position):
+                continue
+
+            include_player = (
+                len(candidates)
+                < self.MARKET_CANDIDATE_WINDOW
+            )
+
+            if (
+                position in needed_positions
+                and position_counts[position]
+                < self.POSITION_CANDIDATES
+            ):
+                include_player = True
+                position_counts[position] += 1
+
+            if (
+                approved_players is not None
+                and normalize_name(player.name)
+                in approved_players
+            ):
+                include_player = True
+
+            if include_player:
+                candidates.append(player)
+
+            general_window_full = (
+                len(candidates)
+                >= self.MARKET_CANDIDATE_WINDOW
+            )
+
+            position_windows_full = all(
+                position_counts[position]
+                >= self.POSITION_CANDIDATES
+                for position in needed_positions
+            )
+
+            if (
+                approved_players is None
+                and general_window_full
+                and position_windows_full
+            ):
+                break
+
+        return candidates
 
     def choose_player(
         self,
@@ -110,10 +95,20 @@ class DecisionEngine:
         available_players: list[Player],
         current_round: int,
         approved_players: set[str] | None = None,
+        available_names: set[str] | None = None,
     ) -> Player | None:
+        if not available_players:
+            return None
+
+        if available_names is None:
+            available_names = {
+                player.name
+                for player in available_players
+            }
+
         candidates = self.candidate_players(
             team=team,
-            available_players=available_players,
+            available_names=available_names,
             approved_players=approved_players,
         )
 
