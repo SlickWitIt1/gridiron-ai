@@ -1,31 +1,39 @@
 from decision_engine import DecisionEngine
-from draft_board import DraftBoard
 from draft_pick import DraftPick
-from league import League
-from market import DraftMarket
+from draft_state import DraftState
 from preferences import normalize_name
 
 
 class DraftEngine:
     def __init__(
         self,
-        league: League,
-        board: DraftBoard,
-        market: DraftMarket,
-        user_team_number: int = 7,
+        state: DraftState,
         approved_players: set[str] | None = None,
-        forbidden_players_by_pick: dict[int, set[str]] | None = None,
+        forbidden_players_by_pick: dict[
+            int,
+            set[str],
+        ] | None = None,
     ):
-        self.league = league
-        self.board = board
-        self.user_team_number = user_team_number
+        self.state = state
+
+        self.league = state.league
+        self.board = state.board
+        self.market = state.market
+
+        self.user_team_number = (
+            state.user_team_number
+        )
+
         self.approved_players = approved_players
 
         self.forbidden_players_by_pick = (
             forbidden_players_by_pick or {}
         )
 
-        self.decision_engine = DecisionEngine(market)
+        self.decision_engine = DecisionEngine(
+            self.market
+        )
+
         self.draft_results: list[DraftPick] = []
 
     def run(
@@ -50,6 +58,8 @@ class DraftEngine:
             ):
                 break
 
+            self.state.current_pick = overall_pick
+
             team = self.league.teams[
                 team_number - 1
             ]
@@ -68,8 +78,8 @@ class DraftEngine:
                 )
 
                 excluded_players = {
-                    normalize_name(name)
-                    for name in (
+                    normalize_name(player_name)
+                    for player_name in (
                         self.forbidden_players_by_pick.get(
                             overall_pick,
                             set(),
@@ -115,7 +125,9 @@ class DraftEngine:
                 player=player,
             )
 
-            self.draft_results.append(draft_pick)
+            self.draft_results.append(
+                draft_pick
+            )
 
             if print_picks:
                 marker = (
@@ -125,7 +137,9 @@ class DraftEngine:
                     else ""
                 )
 
-                print(f"{draft_pick}{marker}")
+                print(
+                    f"{draft_pick}{marker}"
+                )
 
         if print_picks:
             print("\n==============================")

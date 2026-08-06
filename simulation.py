@@ -1,5 +1,6 @@
 from draft_board import DraftBoard
 from draft_engine import DraftEngine
+from draft_state import DraftState
 from league import League
 from loader import load_players
 from market import DraftMarket
@@ -39,14 +40,21 @@ class Simulation:
             seed=self.seed,
         )
 
-        self.board = DraftBoard(self.players)
+        self.board = DraftBoard(
+            self.players
+        )
+
         self.league = League()
 
-        self.engine = DraftEngine(
+        self.state = DraftState(
             league=self.league,
             board=self.board,
             market=self.market,
             user_team_number=self.user_team_number,
+        )
+
+        self.engine = DraftEngine(
+            state=self.state,
             approved_players=self.approved_players,
             forbidden_players_by_pick=(
                 forbidden_players_by_pick
