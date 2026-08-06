@@ -14,6 +14,10 @@ class LiveDraftSession:
     def __init__(
         self,
         user_team_number: int,
+        completed_player_names: tuple[
+            str,
+            ...,
+        ] = (),
     ) -> None:
         if not 1 <= user_team_number <= 10:
             raise ValueError(
@@ -27,10 +31,12 @@ class LiveDraftSession:
             for player in self.players
         }
 
-        self.board = DraftBoard(self.players)
+        self.board = DraftBoard(
+            self.players
+        )
+
         self.league = League()
 
-        # The live session itself does not depend on randomness.
         self.market = DraftMarket(
             players=self.players,
             seed=0,
@@ -43,9 +49,15 @@ class LiveDraftSession:
             user_team_number=user_team_number,
         )
 
-        self.draft_results: list[DraftPick] = []
+        self.draft_results: list[
+            DraftPick
+        ] = []
 
         self.state.current_pick = 1
+
+        self.restore_picks(
+            completed_player_names
+        )
 
     @property
     def user_team_number(self) -> int:
@@ -62,7 +74,9 @@ class LiveDraftSession:
         )
 
     @property
-    def current_team_number(self) -> int | None:
+    def current_team_number(
+        self,
+    ) -> int | None:
         if self.is_complete:
             return None
 
@@ -83,11 +97,16 @@ class LiveDraftSession:
             self.current_pick + 1,
             len(self.league.draft_order) + 1,
         ):
-            team_number = self.league.draft_order[
-                overall_pick - 1
-            ]
+            team_number = (
+                self.league.draft_order[
+                    overall_pick - 1
+                ]
+            )
 
-            if team_number == self.user_team_number:
+            if (
+                team_number
+                == self.user_team_number
+            ):
                 return overall_pick
 
         return None
@@ -98,7 +117,8 @@ class LiveDraftSession:
     ) -> tuple[str, ...]:
         return tuple(
             draft_pick.player.name
-            for draft_pick in self.draft_results
+            for draft_pick
+            in self.draft_results
         )
 
     def player_for_name(
@@ -113,12 +133,16 @@ class LiveDraftSession:
         self,
         player_name: str,
     ) -> bool:
-        player = self.player_for_name(player_name)
+        player = self.player_for_name(
+            player_name
+        )
 
         if player is None:
             return False
 
-        return self.board.is_available(player)
+        return self.board.is_available(
+            player
+        )
 
     def name_suggestions(
         self,
@@ -141,9 +165,30 @@ class LiveDraftSession:
         )
 
         return tuple(
-            self.players_by_name[match].name
+            self.players_by_name[
+                match
+            ].name
             for match in matches
         )
+
+    def restore_picks(
+        self,
+        player_names: tuple[str, ...],
+    ) -> None:
+        if not player_names:
+            return
+
+        if len(player_names) > len(
+            self.league.draft_order
+        ):
+            raise ValueError(
+                "Saved draft contains too many picks."
+            )
+
+        for player_name in player_names:
+            self.record_pick(
+                player_name
+            )
 
     def record_pick(
         self,
@@ -177,25 +222,36 @@ class LiveDraftSession:
                 f"{suggestion_text}"
             )
 
-        if not self.board.is_available(player):
+        if not self.board.is_available(
+            player
+        ):
             raise ValueError(
-                f"{player.name} has already been drafted."
+                f"{player.name} has already "
+                f"been drafted."
             )
 
         overall_pick = self.current_pick
-        team_number = self.current_team_number
+        team_number = (
+            self.current_team_number
+        )
 
         if team_number is None:
             raise RuntimeError(
-                "Could not determine the team on the clock."
+                "Could not determine the "
+                "team on the clock."
             )
 
         team = self.league.teams[
             team_number - 1
         ]
 
-        team.add_player(player)
-        self.board.draft_player(player)
+        team.add_player(
+            player
+        )
+
+        self.board.draft_player(
+            player
+        )
 
         round_number = (
             (overall_pick - 1)
@@ -229,7 +285,9 @@ class LiveDraftSession:
         self,
         limit: int | None = None,
     ) -> list[Player]:
-        players = self.board.available_players
+        players = (
+            self.board.available_players
+        )
 
         if limit is None:
             return players.copy()

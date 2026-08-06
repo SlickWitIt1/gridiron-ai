@@ -1,25 +1,37 @@
 from time import perf_counter
 
+from draft_session_store import (
+    DraftSessionStore,
+)
 from live_draft import LiveDraftSession
 from preferences import normalize_name
-from projection_loader import load_projections
-from recommendation_engine import RecommendationEngine
+from projection_loader import (
+    load_projections,
+)
+from recommendation_engine import (
+    RecommendationEngine,
+)
 from wait_analyzer import WaitAnalyzer
 
 
 DEFAULT_SIMULATIONS = 100
-EXIT_COMMANDS = {"q", "quit", "exit"}
+EXIT_COMMANDS = {
+    "q",
+    "quit",
+    "exit",
+}
 
 
 class QuitDraftAssistant(Exception):
-    """Raised when the user chooses to exit the draft assistant."""
+    """Raised when the user exits."""
 
 
-def read_input(prompt: str) -> str:
-    """
-    Read input and allow the user to quit from any prompt.
-    """
-    value = input(prompt).strip()
+def read_input(
+    prompt: str,
+) -> str:
+    value = input(
+        prompt
+    ).strip()
 
     if value.lower() in EXIT_COMMANDS:
         raise QuitDraftAssistant
@@ -51,7 +63,9 @@ def read_integer(
             return default
 
         try:
-            value = int(raw_value)
+            value = int(
+                raw_value
+            )
 
         except ValueError:
             print(
@@ -62,8 +76,8 @@ def read_integer(
 
         if value < minimum:
             print(
-                f"Please enter a number of at least "
-                f"{minimum}."
+                f"Please enter a number of at "
+                f"least {minimum}."
             )
             continue
 
@@ -72,22 +86,101 @@ def read_integer(
             and value > maximum
         ):
             print(
-                f"Please enter a number no greater "
-                f"than {maximum}."
+                f"Please enter a number no "
+                f"greater than {maximum}."
             )
             continue
 
         return value
 
 
+def read_menu_choice(
+    store: DraftSessionStore,
+) -> str:
+    while True:
+        print(
+            "\n" + "=" * 58
+        )
+
+        print(
+            "           GRIDIRON AI"
+        )
+
+        print(
+            "=" * 58
+        )
+
+        print(
+            "\n1. Start a new live draft"
+        )
+
+        if store.exists():
+            print(
+                "2. Resume saved live draft"
+            )
+
+            print(
+                "3. Delete saved draft"
+            )
+
+            print(
+                "4. Exit"
+            )
+
+            valid_choices = {
+                "1",
+                "2",
+                "3",
+                "4",
+            }
+
+        else:
+            print(
+                "2. Exit"
+            )
+
+            valid_choices = {
+                "1",
+                "2",
+            }
+
+        choice = input(
+            "\nChoose an option: "
+        ).strip()
+
+        if choice not in valid_choices:
+            print(
+                "Please choose one of the "
+                "listed options."
+            )
+            continue
+
+        if store.exists():
+            return {
+                "1": "new",
+                "2": "resume",
+                "3": "delete",
+                "4": "exit",
+            }[choice]
+
+        return {
+            "1": "new",
+            "2": "exit",
+        }[choice]
+
+
 def read_player_names(
     heading: str,
 ) -> tuple[str, ...]:
     print()
-    print(heading)
+    print(
+        heading
+    )
+
     print(
         "Separate names with commas."
     )
+
     print(
         "Enter q at any time to quit."
     )
@@ -99,7 +192,8 @@ def read_player_names(
 
         players = tuple(
             player.strip()
-            for player in raw_players.split(",")
+            for player
+            in raw_players.split(",")
             if player.strip()
         )
 
@@ -111,17 +205,39 @@ def read_player_names(
         )
 
 
+def save_session(
+    store: DraftSessionStore,
+    session: LiveDraftSession,
+    simulations: int,
+) -> None:
+    store.save(
+        draft_slot=(
+            session.user_team_number
+        ),
+        simulations=simulations,
+        drafted_player_names=(
+            session.completed_player_names
+        ),
+    )
+
+
 def print_roster(
     session: LiveDraftSession,
 ) -> None:
     team = session.state.user_team
 
-    print("\n" + "=" * 62)
+    print(
+        "\n" + "=" * 62
+    )
+
     print(
         f" YOUR ROSTER — TEAM "
         f"{session.user_team_number}"
     )
-    print("=" * 62)
+
+    print(
+        "=" * 62
+    )
 
     if not team.players:
         print(
@@ -136,7 +252,9 @@ def print_roster(
                 f"Rank {player.rank}"
             )
 
-    print("-" * 62)
+    print(
+        "-" * 62
+    )
 
     print(
         f"QB {team.count_position('QB')} | "
@@ -155,13 +273,20 @@ def print_roster(
 
 def enter_opponent_picks(
     session: LiveDraftSession,
+    store: DraftSessionStore,
+    simulations: int,
 ) -> None:
     while (
         not session.is_complete
         and not session.is_user_turn
     ):
-        overall_pick = session.current_pick
-        team_number = session.current_team_number
+        overall_pick = (
+            session.current_pick
+        )
+
+        team_number = (
+            session.current_team_number
+        )
 
         print(
             f"\nPick {overall_pick} — "
@@ -170,7 +295,7 @@ def enter_opponent_picks(
 
         player_name = read_input(
             "Player drafted "
-            "(or q to quit): "
+            "(or q to save and quit): "
         )
 
         if not player_name:
@@ -180,19 +305,34 @@ def enter_opponent_picks(
             continue
 
         try:
-            draft_pick = session.record_pick(
-                player_name
+            draft_pick = (
+                session.record_pick(
+                    player_name
+                )
             )
 
-        except ValueError as error:
+        except (
+            ValueError,
+            RuntimeError,
+        ) as error:
             print(
                 f"Error: {error}"
             )
             continue
 
+        save_session(
+            store=store,
+            session=session,
+            simulations=simulations,
+        )
+
         print(
             f"Recorded: "
             f"{draft_pick.player.name}"
+        )
+
+        print(
+            "Draft autosaved."
         )
 
 
@@ -204,14 +344,18 @@ def validate_candidates(
     seen_names: set[str] = set()
 
     for player_name in player_names:
-        normalized_name = normalize_name(
-            player_name
+        normalized_name = (
+            normalize_name(
+                player_name
+            )
         )
 
         if normalized_name in seen_names:
             continue
 
-        seen_names.add(normalized_name)
+        seen_names.add(
+            normalized_name
+        )
 
         player = session.player_for_name(
             player_name
@@ -232,12 +376,16 @@ def validate_candidates(
             if suggestions:
                 print(
                     "  Suggestions: "
-                    + ", ".join(suggestions)
+                    + ", ".join(
+                        suggestions
+                    )
                 )
 
             continue
 
-        if not session.board.is_available(player):
+        if not session.board.is_available(
+            player
+        ):
             print(
                 f"- Already drafted: "
                 f"{player.name}"
@@ -248,19 +396,27 @@ def validate_candidates(
             player.name
         )
 
-    return tuple(valid_players)
+    return tuple(
+        valid_players
+    )
 
 
 def print_available_board(
     session: LiveDraftSession,
     limit: int = 15,
 ) -> None:
-    print("\n" + "=" * 62)
+    print(
+        "\n" + "=" * 62
+    )
+
     print(
         f" TOP {limit} AVAILABLE BY "
         f"FANTASYPROS RANK"
     )
-    print("=" * 62)
+
+    print(
+        "=" * 62
+    )
 
     for player in session.available_players(
         limit=limit
@@ -278,9 +434,13 @@ def print_recommendations(
     next_pick: int,
     runtime: float,
 ) -> None:
-    print("\n" + "=" * 116)
     print(
-        " GRIDIRON AI — LIVE RECOMMENDATIONS"
+        "\n" + "=" * 116
+    )
+
+    print(
+        " GRIDIRON AI — "
+        "LIVE RECOMMENDATIONS"
     )
 
     print(
@@ -288,7 +448,9 @@ def print_recommendations(
         f"Next pick: {next_pick}"
     )
 
-    print("=" * 116)
+    print(
+        "=" * 116
+    )
 
     print(
         f"{'Rank':<6}"
@@ -301,7 +463,9 @@ def print_recommendations(
         f"{'Action':>24}"
     )
 
-    print("-" * 116)
+    print(
+        "-" * 116
+    )
 
     for rank, recommendation in enumerate(
         recommendations,
@@ -325,7 +489,9 @@ def print_recommendations(
             f"{recommendation.action:>24}"
         )
 
-    print("-" * 116)
+    print(
+        "-" * 116
+    )
 
     print(
         f"Runtime: {runtime:.1f} seconds"
@@ -333,13 +499,16 @@ def print_recommendations(
 
     if not recommendations:
         print(
-            "No valid recommendations were produced."
+            "No valid recommendations "
+            "were produced."
         )
         return
 
     top = recommendations[0]
 
-    print("\n" + "=" * 116)
+    print(
+        "\n" + "=" * 116
+    )
 
     print(
         f" TOP PICK: "
@@ -353,7 +522,9 @@ def print_recommendations(
         f"Action: {top.action}"
     )
 
-    print("=" * 116)
+    print(
+        "=" * 116
+    )
 
     for reason in top.reasons:
         print(
@@ -363,11 +534,13 @@ def print_recommendations(
 
 def record_final_user_pick(
     session: LiveDraftSession,
+    store: DraftSessionStore,
+    simulations: int,
 ) -> None:
     while True:
         selected_player = read_input(
             "Player you drafted "
-            "(or q to quit): "
+            "(or q to save and quit): "
         )
 
         try:
@@ -375,16 +548,30 @@ def record_final_user_pick(
                 selected_player
             )
 
-        except ValueError as error:
+        except (
+            ValueError,
+            RuntimeError,
+        ) as error:
             print(
                 f"Error: {error}"
             )
             continue
 
+        save_session(
+            store=store,
+            session=session,
+            simulations=simulations,
+        )
+
         print(
             f"Recorded your pick: "
             f"{draft_pick.player.name}"
         )
+
+        print(
+            "Draft autosaved."
+        )
+
         break
 
 
@@ -393,12 +580,18 @@ def run_user_pick(
     simulations: int,
     wait_analyzer: WaitAnalyzer,
     recommendation_engine: RecommendationEngine,
+    store: DraftSessionStore,
 ) -> None:
     current_pick = session.current_pick
     next_pick = session.next_user_pick
 
-    print_roster(session)
-    print_available_board(session)
+    print_roster(
+        session
+    )
+
+    print_available_board(
+        session
+    )
 
     if next_pick is None:
         print(
@@ -406,7 +599,9 @@ def run_user_pick(
         )
 
         record_final_user_pick(
-            session
+            session=session,
+            store=store,
+            simulations=simulations,
         )
 
         return
@@ -431,8 +626,9 @@ def run_user_pick(
         return
 
     print(
-        f"\nRunning {simulations} live-state "
-        f"counterfactual simulations..."
+        f"\nRunning {simulations} "
+        f"live-state counterfactual "
+        f"simulations..."
     )
 
     start_time = perf_counter()
@@ -474,7 +670,7 @@ def run_user_pick(
     while True:
         selected_player = read_input(
             "\nPlayer you actually drafted "
-            "(or q to quit): "
+            "(or q to save and quit): "
         )
 
         try:
@@ -482,31 +678,53 @@ def run_user_pick(
                 selected_player
             )
 
-        except ValueError as error:
+        except (
+            ValueError,
+            RuntimeError,
+        ) as error:
             print(
                 f"Error: {error}"
             )
             continue
 
+        save_session(
+            store=store,
+            session=session,
+            simulations=simulations,
+        )
+
         print(
             f"Recorded your pick: "
             f"{draft_pick.player.name}"
         )
+
+        print(
+            "Draft autosaved."
+        )
+
         break
 
 
-def run_live_draft() -> None:
-    print("\n" + "=" * 58)
-    print(
-        "           GRIDIRON AI — "
-        "LIVE DRAFT MODE"
-    )
-    print("=" * 58)
+def create_new_session(
+    store: DraftSessionStore,
+) -> tuple[
+    LiveDraftSession,
+    int,
+]:
+    if store.exists():
+        confirm = input(
+            "A saved draft already exists. "
+            "Start over and replace it? "
+            "[y/N]: "
+        ).strip().lower()
 
-    print(
-        "\nEnter q, quit, or exit at any prompt "
-        "to close the assistant."
-    )
+        if confirm not in {
+            "y",
+            "yes",
+        }:
+            raise QuitDraftAssistant
+
+        store.delete()
 
     draft_slot = read_integer(
         prompt="Your draft slot",
@@ -525,6 +743,65 @@ def run_live_draft() -> None:
         user_team_number=draft_slot
     )
 
+    save_session(
+        store=store,
+        session=session,
+        simulations=simulations,
+    )
+
+    return session, simulations
+
+
+def resume_session(
+    store: DraftSessionStore,
+) -> tuple[
+    LiveDraftSession,
+    int,
+]:
+    saved_data = store.load()
+
+    session = LiveDraftSession(
+        user_team_number=(
+            saved_data["draft_slot"]
+        ),
+        completed_player_names=(
+            saved_data[
+                "drafted_player_names"
+            ]
+        ),
+    )
+
+    simulations = saved_data[
+        "simulations"
+    ]
+
+    print(
+        "\nSaved draft restored."
+    )
+
+    print(
+        f"Draft slot: "
+        f"{session.user_team_number}"
+    )
+
+    print(
+        f"Completed picks: "
+        f"{len(session.draft_results)}"
+    )
+
+    print(
+        f"Next overall pick: "
+        f"{session.current_pick}"
+    )
+
+    return session, simulations
+
+
+def run_live_draft(
+    session: LiveDraftSession,
+    simulations: int,
+    store: DraftSessionStore,
+) -> None:
     wait_analyzer = WaitAnalyzer()
 
     recommendation_engine = (
@@ -539,7 +816,9 @@ def run_live_draft() -> None:
 
     while not session.is_complete:
         enter_opponent_picks(
-            session
+            session=session,
+            store=store,
+            simulations=simulations,
         )
 
         if session.is_complete:
@@ -553,40 +832,147 @@ def run_live_draft() -> None:
                 recommendation_engine=(
                     recommendation_engine
                 ),
+                store=store,
             )
 
-    print("\n" + "=" * 58)
-    print(" DRAFT COMPLETE")
-    print("=" * 58)
+    print(
+        "\n" + "=" * 58
+    )
 
-    print_roster(session)
+    print(
+        " DRAFT COMPLETE"
+    )
+
+    print(
+        "=" * 58
+    )
+
+    print_roster(
+        session
+    )
+
+    store.delete()
+
+    print(
+        "\nCompleted draft save deleted."
+    )
 
 
 def main() -> None:
+    store = DraftSessionStore()
+    active_session = None
+    active_simulations = (
+        DEFAULT_SIMULATIONS
+    )
+
     try:
-        run_live_draft()
+        while True:
+            choice = read_menu_choice(
+                store
+            )
+
+            if choice == "exit":
+                print(
+                    "\nExiting Gridiron AI."
+                )
+                return
+
+            if choice == "delete":
+                confirm = input(
+                    "Delete the saved draft? "
+                    "[y/N]: "
+                ).strip().lower()
+
+                if confirm in {
+                    "y",
+                    "yes",
+                }:
+                    store.delete()
+
+                    print(
+                        "Saved draft deleted."
+                    )
+
+                continue
+
+            if choice == "new":
+                (
+                    active_session,
+                    active_simulations,
+                ) = create_new_session(
+                    store
+                )
+
+            elif choice == "resume":
+                (
+                    active_session,
+                    active_simulations,
+                ) = resume_session(
+                    store
+                )
+
+            run_live_draft(
+                session=active_session,
+                simulations=active_simulations,
+                store=store,
+            )
+
+            return
 
     except QuitDraftAssistant:
-        print("\n" + "=" * 58)
-        print(" EXITING GRIDIRON AI")
-        print("=" * 58)
+        if active_session is not None:
+            save_session(
+                store=store,
+                session=active_session,
+                simulations=(
+                    active_simulations
+                ),
+            )
+
+            print(
+                "\nDraft saved successfully."
+            )
+
+            print(
+                f"Resume later at overall "
+                f"Pick "
+                f"{active_session.current_pick}."
+            )
 
         print(
-            "Your draft session has ended."
-        )
-
-        print(
-            "Draft saving and loading will be "
-            "added in the next version."
+            "\nExiting Gridiron AI."
         )
 
     except KeyboardInterrupt:
-        print("\n" + "=" * 58)
-        print(" EXITING GRIDIRON AI")
-        print("=" * 58)
+        if active_session is not None:
+            save_session(
+                store=store,
+                session=active_session,
+                simulations=(
+                    active_simulations
+                ),
+            )
+
+            print(
+                "\nDraft saved successfully."
+            )
 
         print(
-            "Draft assistant stopped with Ctrl+C."
+            "\nDraft assistant stopped."
+        )
+
+    except (
+        FileNotFoundError,
+        ValueError,
+    ) as error:
+        print(
+            f"\nCould not load the saved draft: "
+            f"{error}"
+        )
+
+        print(
+            "Delete the damaged save from "
+            "the startup menu and begin again."
         )
 
 
