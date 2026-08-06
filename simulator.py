@@ -1,7 +1,19 @@
 from config import USER_TEAM_NUMBER
-from preferences import normalize_name
+from lineup_optimizer import LineupOptimizer
 from projection_loader import load_projections
 from simulation import Simulation
+
+
+def print_selection(
+    slot: str,
+    name: str,
+    points: float,
+) -> None:
+    print(
+        f"{slot:<5} | "
+        f"{name:<25} | "
+        f"{points:>6.1f}"
+    )
 
 
 def main() -> None:
@@ -26,56 +38,64 @@ def main() -> None:
         USER_TEAM_NUMBER - 1
     ]
 
+    optimizer = LineupOptimizer(projections)
+    lineup = optimizer.optimize(user_team)
+
     print("\n===================================")
-    print(f" YOUR ROSTER — DRAFT SLOT {USER_TEAM_NUMBER}")
+    print(f" STARTING LINEUP — SLOT {USER_TEAM_NUMBER}")
     print("===================================\n")
 
-    total_roster_projection = 0.0
-    players_with_projections = 0
-    missing_players: list[str] = []
-
-    for player in user_team.players:
-        projection = projections.get(
-            normalize_name(player.name)
+    for selection in lineup.starters:
+        print_selection(
+            slot=selection.slot,
+            name=selection.player.name,
+            points=selection.projected_points,
         )
 
-        if projection is None:
-            missing_players.append(player.name)
-            print(
-                f"{player.position:<4} | "
-                f"{player.name:<25} | "
-                f"No projection"
-            )
-            continue
-
-        players_with_projections += 1
-        total_roster_projection += projection.fantasy_points
-
-        print(projection)
-
-    print("\n" + "-" * 55)
+    print("\n" + "-" * 48)
 
     print(
-        f"Players with projections: "
-        f"{players_with_projections}/"
-        f"{len(user_team.players)}"
+        f"Projected starter points: "
+        f"{lineup.starter_projection:.1f}"
+    )
+
+    print("\n===================================")
+    print(" BENCH")
+    print("===================================\n")
+
+    for selection in lineup.bench:
+        print_selection(
+            slot=selection.slot,
+            name=selection.player.name,
+            points=selection.projected_points,
+        )
+
+    print("\n" + "-" * 48)
+
+    print(
+        f"Projected bench points: "
+        f"{lineup.bench_projection:.1f}"
     )
 
     print(
-        f"Total 16-player projection: "
-        f"{total_roster_projection:.1f}"
+        f"Total roster projection: "
+        f"{lineup.starter_projection + lineup.bench_projection:.1f}"
+    )
+
+    print(
+        f"Starting lineup players: "
+        f"{len(lineup.starters)}/9"
+    )
+
+    print(
+        f"Bench players: "
+        f"{len(lineup.bench)}/7"
     )
 
     print(
         f"Draft picks recorded: "
         f"{len(engine.draft_results)}"
     )
-
-    if missing_players:
-        print("\nMissing projections:")
-
-        for name in missing_players:
-            print(f"- {name}")
 
 
 if __name__ == "__main__":
