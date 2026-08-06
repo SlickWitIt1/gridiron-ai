@@ -1,5 +1,6 @@
-from league import League
+from decision_engine import DecisionEngine
 from draft_board import DraftBoard
+from league import League
 
 
 class DraftEngine:
@@ -8,6 +9,7 @@ class DraftEngine:
 
         self.league = league
         self.board = board
+        self.decision_engine = DecisionEngine()
 
     def run(self):
 
@@ -21,7 +23,10 @@ class DraftEngine:
 
             team = self.league.teams[team_number - 1]
 
-            player = self.board.best_available()
+            player = self.decision_engine.choose_player(
+                team,
+                self.board.available_players,
+            )
 
             if player is None:
                 break
