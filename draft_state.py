@@ -29,9 +29,17 @@ class DraftState:
         return self.board.available_names
 
     @property
+    def total_player_count(self) -> int:
+        return (
+            len(self.board.available_players)
+            + self.drafted_player_count
+        )
+
+    @property
     def drafted_player_count(self) -> int:
-        return len(self.board.available_names) - len(
-            self.available_names
+        return sum(
+            len(team.players)
+            for team in self.league.teams
         )
 
     @property
@@ -40,6 +48,9 @@ class DraftState:
 
     @property
     def current_round(self) -> int:
+        if self.current_pick < 1:
+            return 1
+
         return (
             (self.current_pick - 1)
             // self.league.num_teams

@@ -1,6 +1,7 @@
 from decision_engine import DecisionEngine
 from draft_pick import DraftPick
 from draft_state import DraftState
+from player import Player
 from preferences import normalize_name
 
 
@@ -13,6 +14,7 @@ class DraftEngine:
             int,
             set[str],
         ] | None = None,
+        initial_player_names: tuple[str, ...] = (),
     ):
         self.state = state
 
@@ -34,29 +36,120 @@ class DraftEngine:
             self.market
         )
 
+        self.players_by_name = {
+            normalize_name(player.name): player
+            for player in self.market.sorted_players
+        }
+
         self.draft_results: list[DraftPick] = []
+
+        self._apply_initial_picks(
+            initial_player_names
+        )
+
+    def _player_for_name(
+        self,
+        player_name: str,
+    ) -> Player:
+        player = self.players_by_name.get(
+            normalize_name(player_name)
+        )
+
+        if player is None:
+            raise ValueError(
+                f"Initial drafted player was not found: "
+                f"{player_name}"
+            )
+
+        return player
+
+    def _apply_initial_picks(
+        self,
+        player_names: tuple[str, ...],
+    ) -> None:
+        if len(player_names) > len(
+            self.league.draft_order
+        ):
+            raise ValueError(
+                "Initial draft history contains too many picks."
+            )
+
+        for overall_pick, player_name in enumerate(
+            player_names,
+            start=1,
+        ):
+            team_number = self.league.draft_order[
+                overall_pick - 1
+            ]
+
+            team = self.league.teams[
+                team_number - 1
+            ]
+
+            player = self._player_for_name(
+                player_name
+            )
+
+            if not self.board.is_available(player):
+                raise ValueError(
+                    f"{player.name} appears more than once "
+                    f"in the initial draft history."
+                )
+
+            team.add_player(player)
+            self.board.draft_player(player)
+
+            round_number = (
+                (overall_pick - 1)
+                // self.league.num_teams
+            ) + 1
+
+            pick_in_round = (
+                (overall_pick - 1)
+                % self.league.num_teams
+            ) + 1
+
+            self.draft_results.append(
+                DraftPick(
+                    overall=overall_pick,
+                    round_number=round_number,
+                    pick_in_round=pick_in_round,
+                    team_number=team_number,
+                    player=player,
+                )
+            )
+
+        self.state.current_pick = (
+            len(self.draft_results) + 1
+        )
 
     def run(
         self,
         print_picks: bool = True,
         max_overall_pick: int | None = None,
     ) -> list[DraftPick]:
-        self.draft_results = []
-
         if print_picks:
             print("\n==============================")
             print("      STARTING DRAFT")
             print("==============================\n")
 
-        for overall_pick, team_number in enumerate(
-            self.league.draft_order,
-            start=1,
+        starting_pick = (
+            len(self.draft_results) + 1
+        )
+
+        for overall_pick in range(
+            starting_pick,
+            len(self.league.draft_order) + 1,
         ):
             if (
                 max_overall_pick is not None
                 and overall_pick > max_overall_pick
             ):
                 break
+
+            team_number = self.league.draft_order[
+                overall_pick - 1
+            ]
 
             self.state.current_pick = overall_pick
 
@@ -140,6 +233,10 @@ class DraftEngine:
                 print(
                     f"{draft_pick}{marker}"
                 )
+
+        self.state.current_pick = (
+            len(self.draft_results) + 1
+        )
 
         if print_picks:
             print("\n==============================")

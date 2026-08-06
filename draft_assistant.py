@@ -1,10 +1,11 @@
 from time import perf_counter
 
+from live_draft import LiveDraftSession
+from preferences import normalize_name
 from projection_loader import load_projections
 from recommendation_engine import (
     RecommendationEngine,
 )
-from team import Team
 from wait_analyzer import WaitAnalyzer
 
 
@@ -65,16 +66,11 @@ def read_integer(
 
 def read_player_names(
     heading: str,
-    example: str,
-    allow_empty: bool = False,
 ) -> tuple[str, ...]:
     print()
     print(heading)
     print(
         "Separate names with commas."
-    )
-    print(
-        f"Example: {example}"
     )
 
     while True:
@@ -88,7 +84,7 @@ def read_player_names(
             if player.strip()
         )
 
-        if players or allow_empty:
+        if players:
             return players
 
         print(
@@ -96,66 +92,17 @@ def read_player_names(
         )
 
 
-def build_user_team(
-    player_names: tuple[str, ...],
-    wait_analyzer: WaitAnalyzer,
-    draft_slot: int,
-) -> Team:
-    team = Team(draft_slot)
-
-    missing_players: list[str] = []
-
-    for player_name in player_names:
-        player = next(
-            (
-                candidate
-                for candidate
-                in wait_analyzer.players
-                if (
-                    candidate.name.strip().lower()
-                    == player_name.strip().lower()
-                )
-            ),
-            None,
-        )
-
-        if player is None:
-            missing_players.append(
-                player_name
-            )
-            continue
-
-        try:
-            team.add_player(player)
-
-        except ValueError as error:
-            print()
-            print(
-                f"Could not add {player.name}: "
-                f"{error}"
-            )
-
-    if missing_players:
-        print()
-        print(
-            "The following roster names "
-            "were not recognized:"
-        )
-
-        for player_name in missing_players:
-            print(
-                f"- {player_name}"
-            )
-
-    return team
-
-
-def print_roster_summary(
-    team: Team,
+def print_roster(
+    session: LiveDraftSession,
 ) -> None:
-    print("\n" + "=" * 54)
-    print(" CURRENT ROSTER")
-    print("=" * 54)
+    team = session.state.user_team
+
+    print("\n" + "=" * 62)
+    print(
+        f" YOUR ROSTER — TEAM "
+        f"{session.user_team_number}"
+    )
+    print("=" * 62)
 
     if not team.players:
         print(
@@ -166,18 +113,19 @@ def print_roster_summary(
         for player in team.players:
             print(
                 f"{player.position:<5} | "
-                f"{player.name}"
+                f"{player.name:<25} | "
+                f"Rank {player.rank}"
             )
 
-    print("-" * 54)
+    print("-" * 62)
 
     print(
-        f"QB: {team.count_position('QB')} | "
-        f"RB: {team.count_position('RB')} | "
-        f"WR: {team.count_position('WR')} | "
-        f"TE: {team.count_position('TE')} | "
-        f"DST: {team.count_position('DST')} | "
-        f"K: {team.count_position('K')}"
+        f"QB {team.count_position('QB')} | "
+        f"RB {team.count_position('RB')} | "
+        f"WR {team.count_position('WR')} | "
+        f"TE {team.count_position('TE')} | "
+        f"DST {team.count_position('DST')} | "
+        f"K {team.count_position('K')}"
     )
 
     print(
@@ -185,10 +133,123 @@ def print_roster_summary(
         f"{len(team.players)}/16"
     )
 
+
+def enter_opponent_picks(
+    session: LiveDraftSession,
+) -> None:
+    while (
+        not session.is_complete
+        and not session.is_user_turn
+    ):
+        overall_pick = session.current_pick
+        team_number = session.current_team_number
+
+        print(
+            f"\nPick {overall_pick} — "
+            f"Team {team_number}"
+        )
+
+        player_name = input(
+            "Player drafted: "
+        ).strip()
+
+        if not player_name:
+            print(
+                "Please enter a player name."
+            )
+            continue
+
+        try:
+            draft_pick = session.record_pick(
+                player_name
+            )
+
+        except ValueError as error:
+            print(
+                f"Error: {error}"
+            )
+            continue
+
+        print(
+            f"Recorded: "
+            f"{draft_pick.player.name}"
+        )
+
+
+def validate_candidates(
+    session: LiveDraftSession,
+    player_names: tuple[str, ...],
+) -> tuple[str, ...]:
+    valid_players: list[str] = []
+    seen_names: set[str] = set()
+
+    for player_name in player_names:
+        normalized_name = normalize_name(
+            player_name
+        )
+
+        if normalized_name in seen_names:
+            continue
+
+        seen_names.add(normalized_name)
+
+        player = session.player_for_name(
+            player_name
+        )
+
+        if player is None:
+            print(
+                f"- Not recognized: "
+                f"{player_name}"
+            )
+
+            suggestions = (
+                session.name_suggestions(
+                    player_name
+                )
+            )
+
+            if suggestions:
+                print(
+                    "  Suggestions: "
+                    + ", ".join(suggestions)
+                )
+
+            continue
+
+        if not session.board.is_available(player):
+            print(
+                f"- Already drafted: "
+                f"{player.name}"
+            )
+            continue
+
+        valid_players.append(
+            player.name
+        )
+
+    return tuple(valid_players)
+
+
+def print_available_board(
+    session: LiveDraftSession,
+    limit: int = 15,
+) -> None:
+    print("\n" + "=" * 62)
     print(
-        f"Starter slots filled: "
-        f"{team.starter_slots_filled()}/9"
+        f" TOP {limit} AVAILABLE BY "
+        f"FANTASYPROS RANK"
     )
+    print("=" * 62)
+
+    for player in session.available_players(
+        limit=limit
+    ):
+        print(
+            f"{player.rank:>3} | "
+            f"{player.position:<4} | "
+            f"{player.name}"
+        )
 
 
 def print_recommendations(
@@ -199,8 +260,7 @@ def print_recommendations(
 ) -> None:
     print("\n" + "=" * 116)
     print(
-        " GRIDIRON AI — "
-        "ROSTER-AWARE RECOMMENDATIONS"
+        " GRIDIRON AI — LIVE RECOMMENDATIONS"
     )
 
     print(
@@ -252,154 +312,110 @@ def print_recommendations(
     )
 
     if not recommendations:
-        print()
         print(
-            "No recommendations were produced."
+            "No valid recommendations were produced."
         )
-
-        print(
-            "Check the player names and confirm "
-            "projection data exists."
-        )
-
         return
 
-    top_recommendation = recommendations[0]
+    top = recommendations[0]
 
     print("\n" + "=" * 116)
-
     print(
         f" TOP PICK: "
-        f"{top_recommendation.player_name} "
-        f"({top_recommendation.position})"
+        f"{top.player_name} "
+        f"({top.position})"
     )
-
     print(
-        f" Grade: "
-        f"{top_recommendation.grade} | "
-        f"Score: "
-        f"{top_recommendation.score:.1f} | "
-        f"Action: "
-        f"{top_recommendation.action}"
+        f" Grade: {top.grade} | "
+        f"Score: {top.score:.1f} | "
+        f"Action: {top.action}"
     )
-
     print("=" * 116)
 
-    for reason in top_recommendation.reasons:
+    for reason in top.reasons:
         print(
             f"- {reason}"
         )
 
 
-def run_analysis() -> None:
-    print("\n" + "=" * 52)
-    print(
-        "            GRIDIRON AI "
-        "DRAFT ASSISTANT"
-    )
-    print("=" * 52)
+def run_user_pick(
+    session: LiveDraftSession,
+    simulations: int,
+    wait_analyzer: WaitAnalyzer,
+    recommendation_engine: RecommendationEngine,
+) -> None:
+    current_pick = session.current_pick
+    next_pick = session.next_user_pick
 
-    draft_slot = read_integer(
-        prompt="Your draft slot",
-        minimum=1,
-        maximum=10,
-        default=7,
-    )
+    print_roster(session)
+    print_available_board(session)
 
-    current_pick = read_integer(
-        prompt="Current overall pick",
-        minimum=1,
-        maximum=160,
-    )
+    if next_pick is None:
+        print(
+            "\nThis is your final draft pick."
+        )
 
-    next_pick = read_integer(
-        prompt="Your next overall pick",
-        minimum=current_pick + 1,
-        maximum=160,
-    )
+        selected_player = input(
+            "Player you drafted: "
+        ).strip()
 
-    simulations = read_integer(
-        prompt="Number of simulations",
-        minimum=10,
-        default=DEFAULT_SIMULATIONS,
-    )
+        session.record_pick(
+            selected_player
+        )
 
-    roster_names = read_player_names(
-        heading=(
-            "Enter the players already "
-            "on your roster."
-        ),
-        example=(
-            "CeeDee Lamb, Brock Bowers"
-        ),
-        allow_empty=True,
-    )
+        return
 
     candidate_names = read_player_names(
         heading=(
             "Enter the available players "
-            "you want ranked."
-        ),
-        example=(
-            "Josh Allen, Garrett Wilson, "
-            "Ladd McConkey"
-        ),
+            "you want Gridiron AI to compare."
+        )
     )
 
-    print()
+    valid_candidates = validate_candidates(
+        session=session,
+        player_names=candidate_names,
+    )
+
+    if not valid_candidates:
+        print(
+            "\nNo valid available candidates "
+            "were entered."
+        )
+        return
 
     print(
-        f"Running {simulations} "
-        f"counterfactual simulations "
-        f"and ranking "
-        f"{len(candidate_names)} players..."
+        f"\nRunning {simulations} live-state "
+        f"counterfactual simulations..."
     )
 
     start_time = perf_counter()
 
-    wait_analyzer = WaitAnalyzer()
-
-    user_team = build_user_team(
-        player_names=roster_names,
-        wait_analyzer=wait_analyzer,
-        draft_slot=draft_slot,
-    )
-
     wait_results = (
-        wait_analyzer.analyze_players(
-            player_names=candidate_names,
-            draft_slot=draft_slot,
+        wait_analyzer.analyze_live_players(
+            player_names=valid_candidates,
+            draft_slot=(
+                session.user_team_number
+            ),
+            completed_player_names=(
+                session.completed_player_names
+            ),
             current_pick=current_pick,
             next_pick=next_pick,
             simulations=simulations,
         )
     )
 
-    recommendation_engine = (
-        RecommendationEngine(
-            players=wait_analyzer.players,
-            projections=load_projections(),
-            approved_players=(
-                wait_analyzer
-                .approved_players
-            ),
-        )
-    )
-
     recommendations = (
         recommendation_engine.recommend(
             wait_results=wait_results,
-            user_team=user_team,
+            user_team=session.state.user_team,
         )
     )
 
     runtime = (
         perf_counter()
         - start_time
-    )
-
-    print_roster_summary(
-        user_team
     )
 
     print_recommendations(
@@ -409,27 +425,89 @@ def run_analysis() -> None:
         runtime=runtime,
     )
 
-
-def main() -> None:
     while True:
-        run_analysis()
+        selected_player = input(
+            "\nPlayer you actually drafted: "
+        ).strip()
 
-        print()
-
-        again = input(
-            "Run another recommendation? "
-            "[y/N]: "
-        ).strip().lower()
-
-        if again not in {
-            "y",
-            "yes",
-        }:
-            print(
-                "\nExiting Gridiron AI."
+        try:
+            draft_pick = session.record_pick(
+                selected_player
             )
 
+        except ValueError as error:
+            print(
+                f"Error: {error}"
+            )
+            continue
+
+        print(
+            f"Recorded your pick: "
+            f"{draft_pick.player.name}"
+        )
+        break
+
+
+def main() -> None:
+    print("\n" + "=" * 58)
+    print(
+        "           GRIDIRON AI — "
+        "LIVE DRAFT MODE"
+    )
+    print("=" * 58)
+
+    draft_slot = read_integer(
+        prompt="Your draft slot",
+        minimum=1,
+        maximum=10,
+        default=7,
+    )
+
+    simulations = read_integer(
+        prompt="Simulations per candidate",
+        minimum=10,
+        default=DEFAULT_SIMULATIONS,
+    )
+
+    session = LiveDraftSession(
+        user_team_number=draft_slot
+    )
+
+    wait_analyzer = WaitAnalyzer()
+
+    recommendation_engine = (
+        RecommendationEngine(
+            players=wait_analyzer.players,
+            projections=load_projections(),
+            approved_players=(
+                wait_analyzer.approved_players
+            ),
+        )
+    )
+
+    while not session.is_complete:
+        enter_opponent_picks(
+            session
+        )
+
+        if session.is_complete:
             break
+
+        if session.is_user_turn:
+            run_user_pick(
+                session=session,
+                simulations=simulations,
+                wait_analyzer=wait_analyzer,
+                recommendation_engine=(
+                    recommendation_engine
+                ),
+            )
+
+    print("\n" + "=" * 58)
+    print(" DRAFT COMPLETE")
+    print("=" * 58)
+
+    print_roster(session)
 
 
 if __name__ == "__main__":

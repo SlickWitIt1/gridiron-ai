@@ -41,6 +41,11 @@ class WaitAnalyzer:
         self.players = load_players()
         self.approved_players = load_my_guys()
 
+        self.players_by_name = {
+            normalize_name(player.name): player
+            for player in self.players
+        }
+
     @staticmethod
     def is_available(
         simulation: Simulation,
@@ -61,13 +66,49 @@ class WaitAnalyzer:
         next_pick: int,
         simulations: int = 100,
     ) -> list[WaitAnalysis]:
+        return self.analyze_live_players(
+            player_names=player_names,
+            draft_slot=draft_slot,
+            completed_player_names=(),
+            current_pick=current_pick,
+            next_pick=next_pick,
+            simulations=simulations,
+        )
+
+    def analyze_live_players(
+        self,
+        player_names: tuple[str, ...],
+        draft_slot: int,
+        completed_player_names: tuple[str, ...],
+        current_pick: int,
+        next_pick: int,
+        simulations: int = 100,
+    ) -> list[WaitAnalysis]:
         if next_pick <= current_pick:
             raise ValueError(
                 "Next pick must be later than current pick."
             )
 
+        if current_pick != (
+            len(completed_player_names) + 1
+        ):
+            raise ValueError(
+                "Current pick does not match the number "
+                "of completed live draft picks."
+            )
+
+        completed_normalized = {
+            normalize_name(player_name)
+            for player_name in completed_player_names
+        }
+
         available_counts = {
-            player_name: 0
+            player_name: (
+                0
+                if normalize_name(player_name)
+                in completed_normalized
+                else simulations
+            )
             for player_name in player_names
         }
 
@@ -76,34 +117,17 @@ class WaitAnalyzer:
             for player_name in player_names
         }
 
+        available_player_names = [
+            player_name
+            for player_name in player_names
+            if (
+                normalize_name(player_name)
+                not in completed_normalized
+            )
+        ]
+
         for seed in range(simulations):
-            # Stop immediately before the user's current pick.
-            baseline = Simulation(
-                user_team_number=draft_slot,
-                seed=seed,
-                players=self.players,
-                approved_players=self.approved_players,
-            )
-
-            baseline.run(
-                print_picks=False,
-                max_overall_pick=current_pick - 1,
-            )
-
-            available_players = [
-                player_name
-                for player_name in player_names
-                if self.is_available(
-                    baseline,
-                    player_name,
-                )
-            ]
-
-            for player_name in available_players:
-                available_counts[player_name] += 1
-
-                # Force the user's team to pass at current_pick.
-                # Stop immediately before next_pick.
+            for player_name in available_player_names:
                 counterfactual = Simulation(
                     user_team_number=draft_slot,
                     seed=seed,
@@ -114,6 +138,9 @@ class WaitAnalyzer:
                             player_name,
                         }
                     },
+                    initial_player_names=(
+                        completed_player_names
+                    ),
                 )
 
                 counterfactual.run(
@@ -125,7 +152,9 @@ class WaitAnalyzer:
                     counterfactual,
                     player_name,
                 ):
-                    survived_counts[player_name] += 1
+                    survived_counts[
+                        player_name
+                    ] += 1
 
         return [
             WaitAnalysis(

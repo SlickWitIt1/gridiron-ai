@@ -19,6 +19,7 @@ class Simulation:
             int,
             set[str],
         ] | None = None,
+        initial_player_names: tuple[str, ...] = (),
     ):
         self.user_team_number = user_team_number
         self.seed = seed
@@ -58,6 +59,9 @@ class Simulation:
             approved_players=self.approved_players,
             forbidden_players_by_pick=(
                 forbidden_players_by_pick
+            ),
+            initial_player_names=(
+                initial_player_names
             ),
         )
 
