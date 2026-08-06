@@ -1,71 +1,133 @@
+from config import (
+    FLEX_ELIGIBLE_POSITIONS,
+    FLEX_SLOTS,
+    POSITION_MAXIMUMS,
+    ROSTER_SIZE,
+    STARTER_REQUIREMENTS,
+)
 from player import Player
 
 
+def base_position(position: str) -> str:
+    normalized = position.upper().strip()
+
+    if normalized.startswith("DST") or normalized.startswith("DEF"):
+        return "DST"
+
+    for position_name in ("QB", "RB", "WR", "TE", "K"):
+        if normalized.startswith(position_name):
+            return position_name
+
+    return normalized
+
+
 class Team:
-
-    STARTERS = {
-        "QB": 1,
-        "RB": 2,
-        "WR": 2,
-        "TE": 1,
-        "DST": 1,
-        "K": 1,
-    }
-
-    BENCH_SIZE = 7
-
-    def __init__(self, number):
-
+    def __init__(self, number: int):
         self.number = number
-        self.players = []
+        self.players: list[Player] = []
 
-    def add_player(self, player):
+    def add_player(self, player: Player) -> None:
+        position = base_position(player.position)
+
+        if not self.can_draft(position):
+            raise ValueError(
+                f"Team {self.number} cannot draft another {position}."
+            )
 
         self.players.append(player)
 
-    def count_position(self, position):
-
+    def count_position(self, position: str) -> int:
         return sum(
             1
             for player in self.players
-            if player.position.startswith(position)
+            if base_position(player.position) == position
         )
 
-    def starter_slots_filled(self):
+    def can_draft(self, position: str) -> bool:
+        if len(self.players) >= ROSTER_SIZE:
+            return False
 
-        total = 0
+        maximum = POSITION_MAXIMUMS.get(position)
 
-        for position, limit in self.STARTERS.items():
+        if maximum is None:
+            return False
 
-            total += min(self.count_position(position), limit)
+        return self.count_position(position) < maximum
 
-        return total
+    def core_starter_slots_filled(self) -> int:
+        return sum(
+            min(
+                self.count_position(position),
+                required,
+            )
+            for position, required in STARTER_REQUIREMENTS.items()
+        )
 
-    def bench_players(self):
+    def flex_slots_filled(self) -> int:
+        eligible_players = sum(
+            self.count_position(position)
+            for position in FLEX_ELIGIBLE_POSITIONS
+        )
 
-        return max(0, len(self.players) - self.starter_slots_filled())
+        core_eligible_slots = sum(
+            min(
+                self.count_position(position),
+                STARTER_REQUIREMENTS[position],
+            )
+            for position in FLEX_ELIGIBLE_POSITIONS
+        )
 
-    def needs_position(self, position):
+        eligible_surplus = max(
+            0,
+            eligible_players - core_eligible_slots,
+        )
 
-        # Fill starters first
-        if position in self.STARTERS:
+        return min(FLEX_SLOTS, eligible_surplus)
 
-            if self.count_position(position) < self.STARTERS[position]:
-                return True
+    def starter_slots_filled(self) -> int:
+        return (
+            self.core_starter_slots_filled()
+            + self.flex_slots_filled()
+        )
 
-        # After starters are full...
-        if self.starter_slots_filled() >= 8:
+    def needs_position(self, position: str) -> bool:
+        if not self.can_draft(position):
+            return False
 
-            if self.bench_players() < self.BENCH_SIZE:
-                return True
+        required = STARTER_REQUIREMENTS.get(position, 0)
+
+        if self.count_position(position) < required:
+            return True
+
+        if (
+            position in FLEX_ELIGIBLE_POSITIONS
+            and self.flex_slots_filled() < FLEX_SLOTS
+        ):
+            return True
 
         return False
 
-    def print_roster(self):
+    def bench_players(self) -> int:
+        return max(
+            0,
+            len(self.players) - self.starter_slots_filled(),
+        )
 
+    def is_complete(self) -> bool:
+        return len(self.players) == ROSTER_SIZE
+
+    def print_roster(self) -> None:
         print("\n" + "=" * 35)
         print(f"TEAM {self.number}")
         print("=" * 35)
 
         for player in self.players:
             print(player)
+
+        print("-" * 35)
+        print(f"Players: {len(self.players)}/{ROSTER_SIZE}")
+        print(f"Starter slots filled: {self.starter_slots_filled()}/9")
+        print(f"Bench players: {self.bench_players()}/7")
+
+    def __str__(self) -> str:
+        return f"Team {self.number}"
