@@ -1,7 +1,8 @@
+from decision_engine import DecisionEngine
 from draft_board import DraftBoard
 from draft_pick import DraftPick
-from decision_engine import DecisionEngine
 from league import League
+from market import DraftMarket
 
 
 class DraftEngine:
@@ -9,6 +10,7 @@ class DraftEngine:
         self,
         league: League,
         board: DraftBoard,
+        market: DraftMarket,
         user_team_number: int = 7,
         approved_players: set[str] | None = None,
     ):
@@ -17,7 +19,7 @@ class DraftEngine:
         self.user_team_number = user_team_number
         self.approved_players = approved_players
 
-        self.decision_engine = DecisionEngine()
+        self.decision_engine = DecisionEngine(market)
         self.draft_results: list[DraftPick] = []
 
     def run(self, print_picks: bool = True) -> list[DraftPick]:

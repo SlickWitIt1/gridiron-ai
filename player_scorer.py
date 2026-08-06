@@ -1,3 +1,4 @@
+from market import DraftMarket
 from player import Player
 from preferences import normalize_name
 from team import Team, base_position
@@ -18,6 +19,9 @@ class PlayerScorer:
     MID_ROUND_DST_PENALTY = 180.0
     MID_ROUND_K_PENALTY = 180.0
 
+    def __init__(self, market: DraftMarket):
+        self.market = market
+
     def score_player(
         self,
         player: Player,
@@ -30,7 +34,10 @@ class PlayerScorer:
         if not team.can_draft(position):
             return float("-inf")
 
-        score = 1000.0 - float(player.rank)
+        simulated_rank = self.market.rank_for(player)
+
+        # Lower simulated rank means stronger market value.
+        score = 1000.0 - simulated_rank
 
         if (
             approved_players is not None
