@@ -24,6 +24,11 @@ def main():
 
     engine.run()
 
+    print("\n\nFINAL ROSTERS")
+
+    for team in league.teams:
+        team.print_roster()
+
 
 if __name__ == "__main__":
     main()
