@@ -14,6 +14,8 @@ class Recommendation:
     available_now_probability: float
     survival_probability: float | None
 
+    roster_fit_score: float
+
     score: float
     grade: str
     action: str

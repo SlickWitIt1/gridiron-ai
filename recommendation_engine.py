@@ -5,7 +5,7 @@ from preferences import load_my_guys, normalize_name
 from projection import Projection
 from projection_loader import load_projections
 from recommendation import Recommendation
-from team import base_position
+from team import Team, base_position
 from wait_analyzer import WaitAnalysis
 
 
@@ -18,6 +18,21 @@ class RecommendationEngine:
         "DST": 10,
         "K": 10,
     }
+
+    STARTER_NEED_BONUS = 18.0
+    FLEX_NEED_BONUS = 8.0
+
+    BACKUP_QB_PENALTY = 12.0
+    THIRD_QB_PENALTY = 30.0
+
+    BACKUP_TE_PENALTY = 7.0
+    THIRD_TE_PENALTY = 20.0
+
+    EXTRA_DST_PENALTY = 40.0
+    EXTRA_K_PENALTY = 40.0
+
+    RB_DEPTH_BONUS = 5.0
+    WR_DEPTH_BONUS = 5.0
 
     def __init__(
         self,
@@ -133,9 +148,115 @@ class RecommendationEngine:
 
         return "SAFE TO WAIT"
 
+    def roster_fit(
+        self,
+        team: Team,
+        position: str,
+    ) -> tuple[float, tuple[str, ...]]:
+        score = 0.0
+        reasons: list[str] = []
+
+        position_count = team.count_position(
+            position
+        )
+
+        if team.needs_position(position):
+            score += self.STARTER_NEED_BONUS
+
+            reasons.append(
+                f"Fills an open {position} "
+                f"starting or FLEX need."
+            )
+
+        if (
+            position in {"RB", "WR", "TE"}
+            and team.flex_slots_filled() == 0
+            and not team.needs_position(position)
+        ):
+            score += self.FLEX_NEED_BONUS
+
+            reasons.append(
+                "Can help fill the open FLEX slot."
+            )
+
+        if position == "RB":
+            if position_count < 4:
+                score += self.RB_DEPTH_BONUS
+
+                reasons.append(
+                    "Adds valuable running-back depth."
+                )
+
+        elif position == "WR":
+            if position_count < 4:
+                score += self.WR_DEPTH_BONUS
+
+                reasons.append(
+                    "Adds valuable wide-receiver depth."
+                )
+
+        elif position == "QB":
+            if position_count == 1:
+                score -= self.BACKUP_QB_PENALTY
+
+                reasons.append(
+                    "You already have a starting QB."
+                )
+
+            elif position_count >= 2:
+                score -= self.THIRD_QB_PENALTY
+
+                reasons.append(
+                    "A third QB would use a valuable "
+                    "bench spot."
+                )
+
+        elif position == "TE":
+            if position_count == 1:
+                score -= self.BACKUP_TE_PENALTY
+
+                reasons.append(
+                    "You already have a starting TE."
+                )
+
+            elif position_count >= 2:
+                score -= self.THIRD_TE_PENALTY
+
+                reasons.append(
+                    "A third TE would use a valuable "
+                    "bench spot."
+                )
+
+        elif position == "DST":
+            if position_count >= 1:
+                score -= self.EXTRA_DST_PENALTY
+
+                reasons.append(
+                    "You already have a defense."
+                )
+
+        elif position == "K":
+            if position_count >= 1:
+                score -= self.EXTRA_K_PENALTY
+
+                reasons.append(
+                    "You already have a kicker."
+                )
+
+        if not team.can_draft(position):
+            score = -100.0
+
+            reasons.append(
+                f"Your roster cannot legally add "
+                f"another {position}."
+            )
+
+        return score, tuple(reasons)
+
     def recommend(
         self,
         wait_results: Iterable[WaitAnalysis],
+        user_team: Team,
     ) -> list[Recommendation]:
         prepared_results: list[
             tuple[
@@ -144,6 +265,8 @@ class RecommendationEngine:
                 Projection,
                 float,
                 bool,
+                float,
+                tuple[str, ...],
             ]
         ] = []
 
@@ -167,6 +290,9 @@ class RecommendationEngine:
                 player.position
             )
 
+            if not user_team.can_draft(position):
+                continue
+
             replacement_points = (
                 self.replacement_points.get(
                     position,
@@ -184,6 +310,14 @@ class RecommendationEngine:
                 in self.approved_players
             )
 
+            (
+                roster_fit_score,
+                roster_reasons,
+            ) = self.roster_fit(
+                team=user_team,
+                position=position,
+            )
+
             prepared_results.append(
                 (
                     wait_result,
@@ -191,6 +325,8 @@ class RecommendationEngine:
                     projection,
                     projection_advantage,
                     is_my_guy,
+                    roster_fit_score,
+                    roster_reasons,
                 )
             )
 
@@ -220,6 +356,8 @@ class RecommendationEngine:
             projection,
             projection_advantage,
             is_my_guy,
+            roster_fit_score,
+            roster_reasons,
         ) in prepared_results:
             if advantage_spread == 0:
                 value_score = 35.0
@@ -258,12 +396,20 @@ class RecommendationEngine:
                 * 5.0
             )
 
-            score = min(
-                100.0,
-                value_score
-                + urgency_score
-                + preference_score
-                + availability_score,
+            score = max(
+                0.0,
+                min(
+                    100.0,
+                    value_score
+                    + urgency_score
+                    + preference_score
+                    + availability_score
+                    + roster_fit_score,
+                ),
+            )
+
+            position = base_position(
+                player.position
             )
 
             reasons: list[str] = [
@@ -276,6 +422,10 @@ class RecommendationEngine:
                     f"replacement baseline)."
                 )
             ]
+
+            reasons.extend(
+                roster_reasons
+            )
 
             if is_my_guy:
                 reasons.append(
@@ -319,6 +469,9 @@ class RecommendationEngine:
                     ),
                     survival_probability=(
                         survival_probability
+                    ),
+                    roster_fit_score=(
+                        roster_fit_score
                     ),
                     score=score,
                     grade=self._grade(score),

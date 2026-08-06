@@ -4,6 +4,7 @@ from projection_loader import load_projections
 from recommendation_engine import (
     RecommendationEngine,
 )
+from team import Team
 from wait_analyzer import WaitAnalyzer
 
 
@@ -62,20 +63,18 @@ def read_integer(
         return value
 
 
-def read_players() -> tuple[str, ...]:
+def read_player_names(
+    heading: str,
+    example: str,
+    allow_empty: bool = False,
+) -> tuple[str, ...]:
     print()
-    print(
-        "Enter the available players "
-        "you want ranked."
-    )
-
+    print(heading)
     print(
         "Separate names with commas."
     )
-
     print(
-        "Example: Josh Allen, "
-        "Garrett Wilson, Ladd McConkey"
+        f"Example: {example}"
     )
 
     while True:
@@ -89,12 +88,107 @@ def read_players() -> tuple[str, ...]:
             if player.strip()
         )
 
-        if players:
+        if players or allow_empty:
             return players
 
         print(
             "Please enter at least one player."
         )
+
+
+def build_user_team(
+    player_names: tuple[str, ...],
+    wait_analyzer: WaitAnalyzer,
+    draft_slot: int,
+) -> Team:
+    team = Team(draft_slot)
+
+    missing_players: list[str] = []
+
+    for player_name in player_names:
+        player = next(
+            (
+                candidate
+                for candidate
+                in wait_analyzer.players
+                if (
+                    candidate.name.strip().lower()
+                    == player_name.strip().lower()
+                )
+            ),
+            None,
+        )
+
+        if player is None:
+            missing_players.append(
+                player_name
+            )
+            continue
+
+        try:
+            team.add_player(player)
+
+        except ValueError as error:
+            print()
+            print(
+                f"Could not add {player.name}: "
+                f"{error}"
+            )
+
+    if missing_players:
+        print()
+        print(
+            "The following roster names "
+            "were not recognized:"
+        )
+
+        for player_name in missing_players:
+            print(
+                f"- {player_name}"
+            )
+
+    return team
+
+
+def print_roster_summary(
+    team: Team,
+) -> None:
+    print("\n" + "=" * 54)
+    print(" CURRENT ROSTER")
+    print("=" * 54)
+
+    if not team.players:
+        print(
+            "No players drafted yet."
+        )
+
+    else:
+        for player in team.players:
+            print(
+                f"{player.position:<5} | "
+                f"{player.name}"
+            )
+
+    print("-" * 54)
+
+    print(
+        f"QB: {team.count_position('QB')} | "
+        f"RB: {team.count_position('RB')} | "
+        f"WR: {team.count_position('WR')} | "
+        f"TE: {team.count_position('TE')} | "
+        f"DST: {team.count_position('DST')} | "
+        f"K: {team.count_position('K')}"
+    )
+
+    print(
+        f"Players drafted: "
+        f"{len(team.players)}/16"
+    )
+
+    print(
+        f"Starter slots filled: "
+        f"{team.starter_slots_filled()}/9"
+    )
 
 
 def print_recommendations(
@@ -103,9 +197,10 @@ def print_recommendations(
     next_pick: int,
     runtime: float,
 ) -> None:
-    print("\n" + "=" * 104)
+    print("\n" + "=" * 116)
     print(
-        " GRIDIRON AI — RECOMMENDATIONS"
+        " GRIDIRON AI — "
+        "ROSTER-AWARE RECOMMENDATIONS"
     )
 
     print(
@@ -113,7 +208,7 @@ def print_recommendations(
         f"Next pick: {next_pick}"
     )
 
-    print("=" * 104)
+    print("=" * 116)
 
     print(
         f"{'Rank':<6}"
@@ -121,11 +216,12 @@ def print_recommendations(
         f"{'Pos':<6}"
         f"{'Score':>8}"
         f"{'Grade':>8}"
+        f"{'Roster':>10}"
         f"{'Survives':>12}"
-        f"{'Action':>22}"
+        f"{'Action':>24}"
     )
 
-    print("-" * 104)
+    print("-" * 116)
 
     for rank, recommendation in enumerate(
         recommendations,
@@ -144,11 +240,12 @@ def print_recommendations(
             f"{recommendation.position:<6}"
             f"{recommendation.score:>8.1f}"
             f"{recommendation.grade:>8}"
+            f"{recommendation.roster_fit_score:>+10.1f}"
             f"{survival_text:>12}"
-            f"{recommendation.action:>22}"
+            f"{recommendation.action:>24}"
         )
 
-    print("-" * 104)
+    print("-" * 116)
 
     print(
         f"Runtime: {runtime:.1f} seconds"
@@ -169,7 +266,7 @@ def print_recommendations(
 
     top_recommendation = recommendations[0]
 
-    print("\n" + "=" * 104)
+    print("\n" + "=" * 116)
 
     print(
         f" TOP PICK: "
@@ -186,19 +283,21 @@ def print_recommendations(
         f"{top_recommendation.action}"
     )
 
-    print("=" * 104)
+    print("=" * 116)
 
     for reason in top_recommendation.reasons:
-        print(f"- {reason}")
+        print(
+            f"- {reason}"
+        )
 
 
 def run_analysis() -> None:
-    print("\n" + "=" * 48)
+    print("\n" + "=" * 52)
     print(
-        "          GRIDIRON AI "
+        "            GRIDIRON AI "
         "DRAFT ASSISTANT"
     )
-    print("=" * 48)
+    print("=" * 52)
 
     draft_slot = read_integer(
         prompt="Your draft slot",
@@ -225,7 +324,27 @@ def run_analysis() -> None:
         default=DEFAULT_SIMULATIONS,
     )
 
-    player_names = read_players()
+    roster_names = read_player_names(
+        heading=(
+            "Enter the players already "
+            "on your roster."
+        ),
+        example=(
+            "CeeDee Lamb, Brock Bowers"
+        ),
+        allow_empty=True,
+    )
+
+    candidate_names = read_player_names(
+        heading=(
+            "Enter the available players "
+            "you want ranked."
+        ),
+        example=(
+            "Josh Allen, Garrett Wilson, "
+            "Ladd McConkey"
+        ),
+    )
 
     print()
 
@@ -233,16 +352,22 @@ def run_analysis() -> None:
         f"Running {simulations} "
         f"counterfactual simulations "
         f"and ranking "
-        f"{len(player_names)} players..."
+        f"{len(candidate_names)} players..."
     )
 
     start_time = perf_counter()
 
     wait_analyzer = WaitAnalyzer()
 
+    user_team = build_user_team(
+        player_names=roster_names,
+        wait_analyzer=wait_analyzer,
+        draft_slot=draft_slot,
+    )
+
     wait_results = (
         wait_analyzer.analyze_players(
-            player_names=player_names,
+            player_names=candidate_names,
             draft_slot=draft_slot,
             current_pick=current_pick,
             next_pick=next_pick,
@@ -263,13 +388,18 @@ def run_analysis() -> None:
 
     recommendations = (
         recommendation_engine.recommend(
-            wait_results
+            wait_results=wait_results,
+            user_team=user_team,
         )
     )
 
     runtime = (
         perf_counter()
         - start_time
+    )
+
+    print_roster_summary(
+        user_team
     )
 
     print_recommendations(
