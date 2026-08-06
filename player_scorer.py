@@ -12,20 +12,24 @@ class PlayerScorer:
     EXTRA_DST_PENALTY = 250.0
     EXTRA_K_PENALTY = 250.0
 
+    EARLY_DST_PENALTY = 500.0
+    EARLY_K_PENALTY = 500.0
+
+    MID_ROUND_DST_PENALTY = 180.0
+    MID_ROUND_K_PENALTY = 180.0
+
     def score_player(
         self,
         player: Player,
         team: Team,
+        current_round: int,
         approved_players: set[str] | None = None,
     ) -> float:
         position = base_position(player.position)
 
-        # A player exceeding the league's hard roster maximum
-        # is completely ineligible.
         if not team.can_draft(position):
             return float("-inf")
 
-        # Lower FantasyPros rank is better.
         score = 1000.0 - float(player.rank)
 
         if (
@@ -43,10 +47,22 @@ class PlayerScorer:
         if position == "TE" and team.count_position("TE") >= 1:
             score -= self.BACKUP_TE_PENALTY
 
-        if position == "DST" and team.count_position("DST") >= 1:
-            score -= self.EXTRA_DST_PENALTY
+        if position == "DST":
+            if team.count_position("DST") >= 1:
+                score -= self.EXTRA_DST_PENALTY
 
-        if position == "K" and team.count_position("K") >= 1:
-            score -= self.EXTRA_K_PENALTY
+            if current_round <= 10:
+                score -= self.EARLY_DST_PENALTY
+            elif current_round <= 13:
+                score -= self.MID_ROUND_DST_PENALTY
+
+        if position == "K":
+            if team.count_position("K") >= 1:
+                score -= self.EXTRA_K_PENALTY
+
+            if current_round <= 11:
+                score -= self.EARLY_K_PENALTY
+            elif current_round <= 14:
+                score -= self.MID_ROUND_K_PENALTY
 
         return score

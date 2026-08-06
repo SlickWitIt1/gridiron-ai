@@ -34,6 +34,10 @@ class DraftEngine:
         ):
             team = self.league.teams[team_number - 1]
 
+            current_round = (
+                (overall_pick - 1) // self.league.num_teams
+            ) + 1
+
             team_approved_players = None
 
             if team_number == self.user_team_number:
@@ -42,6 +46,7 @@ class DraftEngine:
             player = self.decision_engine.choose_player(
                 team=team,
                 available_players=self.board.available_players,
+                current_round=current_round,
                 approved_players=team_approved_players,
             )
 
@@ -54,17 +59,13 @@ class DraftEngine:
             team.add_player(player)
             self.board.draft_player(player)
 
-            round_number = (
-                (overall_pick - 1) // self.league.num_teams
-            ) + 1
-
             pick_in_round = (
                 (overall_pick - 1) % self.league.num_teams
             ) + 1
 
             draft_pick = DraftPick(
                 overall=overall_pick,
-                round_number=round_number,
+                round_number=current_round,
                 pick_in_round=pick_in_round,
                 team_number=team_number,
                 player=player,
@@ -73,9 +74,11 @@ class DraftEngine:
             self.draft_results.append(draft_pick)
 
             if print_picks:
-                marker = "  <-- YOUR PICK" if (
-                    team_number == self.user_team_number
-                ) else ""
+                marker = (
+                    "  <-- YOUR PICK"
+                    if team_number == self.user_team_number
+                    else ""
+                )
 
                 print(f"{draft_pick}{marker}")
 

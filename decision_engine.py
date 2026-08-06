@@ -11,6 +11,7 @@ class DecisionEngine:
         self,
         team: Team,
         available_players: list[Player],
+        current_round: int,
         approved_players: set[str] | None = None,
     ) -> Player | None:
         if not available_players:
@@ -21,6 +22,7 @@ class DecisionEngine:
             key=lambda player: self.player_scorer.score_player(
                 player=player,
                 team=team,
+                current_round=current_round,
                 approved_players=approved_players,
             ),
         )
