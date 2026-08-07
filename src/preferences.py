@@ -2,8 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 
-
-MY_GUYS_FILE = Path("../data/My Guys.xlsx")
+from project_paths import MY_GUYS_FILE
 
 
 def normalize_name(name: str) -> str:
@@ -11,9 +10,17 @@ def normalize_name(name: str) -> str:
 
 
 def load_my_guys(
-    excel_path: Path = MY_GUYS_FILE,
+    excel_path: str | Path = MY_GUYS_FILE,
 ) -> set[str]:
-    dataframe = pd.read_excel(excel_path)
+    path = Path(excel_path).expanduser().resolve()
+
+    if not path.is_file():
+        raise FileNotFoundError(
+            "My Guys spreadsheet was not found: "
+            f"{path}"
+        )
+
+    dataframe = pd.read_excel(path)
 
     required_columns = {"Position", "Player", "Team", "Bye"}
     missing_columns = required_columns - set(dataframe.columns)
@@ -24,9 +31,7 @@ def load_my_guys(
             f"My Guys.xlsx is missing columns: {missing_text}"
         )
 
-    names = {
+    return {
         normalize_name(player_name)
         for player_name in dataframe["Player"].dropna()
     }
-
-    return names

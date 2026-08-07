@@ -1,27 +1,35 @@
+from pathlib import Path
+
 import pandas as pd
 
 from player import Player
+from project_paths import RANKINGS_FILE
 
 
-def load_players(csv_path="../data/FantasyPros_2026_Draft_ALL_Rankings.csv"):
+def load_players(
+    csv_path: str | Path = RANKINGS_FILE,
+) -> list[Player]:
+    path = Path(csv_path).expanduser().resolve()
 
-    df = pd.read_csv(csv_path)
+    if not path.is_file():
+        raise FileNotFoundError(
+            "FantasyPros rankings file was not found: "
+            f"{path}"
+        )
 
-    players = []
+    dataframe = pd.read_csv(path)
+    players: list[Player] = []
 
-    for _, row in df.iterrows():
-
-        # Skip rows that don't have a valid rank or tier
+    for _, row in dataframe.iterrows():
         try:
             rank = int(row["RK"])
             tier = int(row["TIERS"])
-        except:
+        except (KeyError, TypeError, ValueError):
             continue
 
-        # Handle missing bye weeks
         try:
             bye = int(row["BYE WEEK"])
-        except:
+        except (KeyError, TypeError, ValueError):
             bye = 0
 
         player = Player(
@@ -38,6 +46,5 @@ def load_players(csv_path="../data/FantasyPros_2026_Draft_ALL_Rankings.csv"):
 
         players.append(player)
 
-    players.sort(key=lambda p: p.rank)
-
+    players.sort(key=lambda player: player.rank)
     return players

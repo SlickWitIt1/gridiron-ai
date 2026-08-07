@@ -1,21 +1,8 @@
-from pathlib import Path
-
 import pandas as pd
 
 from preferences import normalize_name
 from projection import Projection
-
-
-DATA_FOLDER = Path("../data")
-
-PROJECTION_FILES = {
-    "QB": "FantasyPros_Fantasy_Football_Projections_QB.csv",
-    "RB": "FantasyPros_Fantasy_Football_Projections_RB.csv",
-    "WR": "FantasyPros_Fantasy_Football_Projections_WR.csv",
-    "TE": "FantasyPros_Fantasy_Football_Projections_TE.csv",
-    "K": "FantasyPros_Fantasy_Football_Projections_K.csv",
-    "DST": "FantasyPros_Fantasy_Football_Projections_DST.csv",
-}
+from project_paths import PROJECTION_FILES
 
 
 def numeric_value(value: object) -> float:
@@ -104,10 +91,8 @@ def row_stats(
 
 def load_projection_file(
     position: str,
-    filename: str,
+    path,
 ) -> list[Projection]:
-    path = DATA_FOLDER / filename
-
     if not path.exists():
         raise FileNotFoundError(
             f"Projection file was not found: {path}"
@@ -147,10 +132,10 @@ def load_projection_file(
 def load_projections() -> dict[str, Projection]:
     projections: dict[str, Projection] = {}
 
-    for position, filename in PROJECTION_FILES.items():
+    for position, path in PROJECTION_FILES.items():
         position_projections = load_projection_file(
             position=position,
-            filename=filename,
+            path=path,
         )
 
         for projection in position_projections:

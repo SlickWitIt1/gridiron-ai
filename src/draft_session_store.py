@@ -2,21 +2,21 @@ import json
 from pathlib import Path
 from typing import Any
 
+from project_paths import LIVE_DRAFT_SAVE_FILE
 
-DEFAULT_SAVE_PATH = Path(
-    "../output/live_draft_session.json"
-)
+
+DEFAULT_SAVE_PATH = LIVE_DRAFT_SAVE_FILE
 
 
 class DraftSessionStore:
     def __init__(
         self,
-        save_path: Path = DEFAULT_SAVE_PATH,
+        save_path: str | Path = DEFAULT_SAVE_PATH,
     ) -> None:
-        self.save_path = save_path
+        self.save_path = Path(save_path).expanduser().resolve()
 
     def exists(self) -> bool:
-        return self.save_path.exists()
+        return self.save_path.is_file()
 
     def save(
         self,
@@ -79,14 +79,8 @@ class DraftSessionStore:
                 "unsupported version."
             )
 
-        draft_slot = payload.get(
-            "draft_slot"
-        )
-
-        simulations = payload.get(
-            "simulations"
-        )
-
+        draft_slot = payload.get("draft_slot")
+        simulations = payload.get("simulations")
         drafted_player_names = payload.get(
             "drafted_player_names"
         )
@@ -101,18 +95,14 @@ class DraftSessionStore:
                 "Saved simulation count is invalid."
             )
 
-        if not isinstance(
-            drafted_player_names,
-            list,
-        ):
+        if not isinstance(drafted_player_names, list):
             raise ValueError(
                 "Saved draft history is invalid."
             )
 
         if not all(
             isinstance(player_name, str)
-            for player_name
-            in drafted_player_names
+            for player_name in drafted_player_names
         ):
             raise ValueError(
                 "Saved player names are invalid."
