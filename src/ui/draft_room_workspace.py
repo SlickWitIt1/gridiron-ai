@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QComboBox,
+    QButtonGroup,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -25,7 +25,28 @@ from projection_loader import load_projections
 from team import base_position
 
 
-POSITION_FILTERS = ("ALL", "QB", "RB", "WR", "TE", "DST", "K")
+POSITION_FILTERS = (
+    ("ALL", "ALL"),
+    ("QB", "QB"),
+    ("RB", "RB"),
+    ("WR", "WR"),
+    ("TE", "TE"),
+    ("FLEX", "FLEX"),
+    ("K", "K"),
+    ("DEF", "DST"),
+)
+
+STARTER_REQUIREMENTS = {
+    "QB": 1,
+    "RB": 2,
+    "WR": 2,
+    "TE": 1,
+    "FLEX": 1,
+    "K": 1,
+    "DST": 1,
+}
+
+TOTAL_ROSTER_SPOTS = 16
 
 POSITION_COLORS = {
     "QB": "#c084fc",
@@ -51,6 +72,8 @@ class DraftRoomPlayerBrowser(QFrame):
         self._session: LiveDraftSession | None = None
         self._approved_players: set[str] = set()
         self._projections = load_projections()
+        self._active_position = "ALL"
+        self._filter_buttons: dict[str, QPushButton] = {}
 
         self._build_ui()
 
@@ -82,23 +105,35 @@ class DraftRoomPlayerBrowser(QFrame):
         self.search.textChanged.connect(self.refresh_table)
         top.addWidget(self.search)
 
-        self.position_filter = QComboBox()
-        self.position_filter.setObjectName("WorkspaceFilter")
-        self.position_filter.addItems(POSITION_FILTERS)
-        self.position_filter.setFixedWidth(78)
-        self.position_filter.currentTextChanged.connect(self.refresh_table)
-        top.addWidget(self.position_filter)
+        self.position_group = QButtonGroup(self)
+        self.position_group.setExclusive(True)
+
+        for display_name, position_key in POSITION_FILTERS:
+            button = QPushButton()
+            button.setObjectName("PositionTab")
+            button.setCheckable(True)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setMinimumWidth(58 if display_name != "ALL" else 66)
+            button.setMinimumHeight(46)
+            button.clicked.connect(
+                lambda checked=False, key=position_key: self._set_position_filter(key)
+            )
+            top.addWidget(button)
+            self.position_group.addButton(button)
+            self._filter_buttons[position_key] = button
+
+        self._filter_buttons["ALL"].setChecked(True)
 
         layout.addLayout(top)
 
         self.table = QTableWidget(0, 7)
         self.table.setObjectName("DraftRoomPlayerTable")
         self.table.setHorizontalHeaderLabels(
-            ("RK", "PLAYER", "POS", "TEAM", "BYE", "PROJ", "TIER")
+            ("RK", "PLAYER", "ADP", "BYE", "PROJ", "TIER", "POS")
         )
         self.table.verticalHeader().hide()
         self.table.setShowGrid(False)
-        self.table.setAlternatingRowColors(False)
+        self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -177,7 +212,64 @@ class DraftRoomPlayerBrowser(QFrame):
         self.undo_button.setEnabled(
             session is not None and bool(session.draft_results)
         )
+        self._refresh_position_tabs()
         self.refresh_table()
+
+    def _set_position_filter(self, position_key: str) -> None:
+        self._active_position = position_key
+        self.refresh_table()
+
+    def _user_position_counts(self) -> dict[str, int]:
+        counts = {"QB": 0, "RB": 0, "WR": 0, "TE": 0, "K": 0, "DST": 0}
+
+        if self._session is None:
+            return counts
+
+        for draft_pick in self._session.draft_results:
+            if draft_pick.team_number != self._session.user_team_number:
+                continue
+
+            position = base_position(draft_pick.player.position).upper()
+            if position in counts:
+                counts[position] += 1
+
+        return counts
+
+    @staticmethod
+    def _flex_filled(counts: dict[str, int]) -> int:
+        extras = (
+            max(0, counts["RB"] - STARTER_REQUIREMENTS["RB"])
+            + max(0, counts["WR"] - STARTER_REQUIREMENTS["WR"])
+            + max(0, counts["TE"] - STARTER_REQUIREMENTS["TE"])
+        )
+        return min(STARTER_REQUIREMENTS["FLEX"], extras)
+
+    def _refresh_position_tabs(self) -> None:
+        counts = self._user_position_counts()
+        total_drafted = sum(counts.values())
+        flex_filled = self._flex_filled(counts)
+
+        for display_name, key in POSITION_FILTERS:
+            button = self._filter_buttons.get(key)
+            if button is None:
+                continue
+
+            if key == "ALL":
+                value, maximum = total_drafted, TOTAL_ROSTER_SPOTS
+            elif key == "FLEX":
+                value, maximum = flex_filled, STARTER_REQUIREMENTS["FLEX"]
+            else:
+                value = min(counts.get(key, 0), STARTER_REQUIREMENTS[key])
+                maximum = STARTER_REQUIREMENTS[key]
+
+            button.setText(f"{display_name}\n{value}/{maximum}")
+            button.setProperty(
+                "rosterState",
+                "complete" if maximum > 0 and value >= maximum else "open",
+            )
+            button.style().unpolish(button)
+            button.style().polish(button)
+            button.update()
 
     def selected_player_names(self) -> tuple[str, ...]:
         rows = sorted({index.row() for index in self.table.selectionModel().selectedRows()})
@@ -203,43 +295,48 @@ class DraftRoomPlayerBrowser(QFrame):
                 return
 
             query = normalize_name(self.search.text())
-            wanted_position = self.position_filter.currentText().upper()
+            wanted_position = self._active_position
 
             for player in self._session.available_players():
                 position = base_position(player.position).upper()
 
-                if wanted_position != "ALL" and position != wanted_position:
+                if wanted_position == "FLEX":
+                    if position not in {"RB", "WR", "TE"}:
+                        continue
+                elif wanted_position != "ALL" and position != wanted_position:
                     continue
                 if query and query not in normalize_name(player.name):
                     continue
 
                 row = self.table.rowCount()
                 self.table.insertRow(row)
-                self.table.setRowHeight(row, 30)
+                self.table.setRowHeight(row, 32)
 
                 projection = self._projections.get(normalize_name(player.name))
                 projected_points = getattr(projection, "fantasy_points", None)
 
+                adp = getattr(player, "adp", None)
+                player_text = player.name
+                if normalize_name(player.name) in self._approved_players:
+                    player_text += "   ★"
+
                 values = (
                     str(getattr(player, "rank", "") or ""),
-                    player.name,
-                    player.position,
-                    player.team,
+                    player_text,
+                    f"{float(adp):.1f}" if isinstance(adp, (int, float)) else "—",
                     str(getattr(player, "bye", "") or "—"),
                     f"{projected_points:.1f}" if isinstance(projected_points, (int, float)) else "—",
                     str(getattr(player, "tier", "") or "—"),
+                    f"{player.position}  {player.team}",
                 )
 
                 for column, text in enumerate(values):
                     item = QTableWidgetItem(text)
                     item.setData(Qt.ItemDataRole.UserRole, player.name)
 
-                    if column == 1:
-                        is_my_guy = normalize_name(player.name) in self._approved_players
-                        if is_my_guy:
-                            item.setText(f"{player.name}   ★")
-                            item.setForeground(QColor("#fde047"))
-                    elif column == 2:
+                    if column == 1 and normalize_name(player.name) in self._approved_players:
+                        item.setForeground(QColor("#fde047"))
+                    elif column == 6:
                         item.setForeground(
                             QColor(POSITION_COLORS.get(position, "#e2e8f0"))
                         )

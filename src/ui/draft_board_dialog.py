@@ -250,6 +250,32 @@ QLabel#AnalyticsEyebrow {
     letter-spacing: .8px;
 }
 
+
+QPushButton#PositionTab {
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    color: #94a3b8;
+    padding: 4px 8px;
+    font-size: 10px;
+    font-weight: 900;
+}
+
+QPushButton#PositionTab:hover {
+    background-color: #172033;
+    color: #e2e8f0;
+}
+
+QPushButton#PositionTab:checked {
+    background-color: #0f766e;
+    border-color: #14b8a6;
+    color: #ecfeff;
+}
+
+QPushButton#PositionTab[rosterState="complete"]:!checked {
+    color: #4ade80;
+}
+
 QLabel#WorkspaceSubtle,
 QLabel#AnalyticsMeta {
     color: #8091aa;
@@ -274,7 +300,7 @@ QComboBox#WorkspaceFilter:focus {
 
 QTableWidget#DraftRoomPlayerTable {
     background-color: #0d1421;
-    alternate-background-color: #0d1421;
+    alternate-background-color: #111a29;
     border: 1px solid #243248;
     border-radius: 8px;
     color: #e2e8f0;
