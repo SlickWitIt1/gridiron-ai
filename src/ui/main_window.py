@@ -1059,21 +1059,6 @@ class GridironWindow(QMainWindow):
         )
         previous_forecast = self.command_center.current_forecast
 
-        choice = QMessageBox.question(
-            self,
-            "Record draft pick?",
-            (
-                f"Record {player_name} for "
-                f"Team {team_number} at "
-                f"Pick {self.session.current_pick}?"
-            ),
-            QMessageBox.StandardButton.Yes
-            | QMessageBox.StandardButton.No,
-        )
-
-        if choice != QMessageBox.StandardButton.Yes:
-            return
-
         try:
             draft_pick = self.session.record_pick(
                 player_name
@@ -1139,6 +1124,25 @@ class GridironWindow(QMainWindow):
 
         self.statusBar().showMessage(
             f"Undid the selection of {removed_pick.player.name}.",
+            6000,
+        )
+
+    def redo_last_pick(self) -> None:
+        if self.session is None or not self.session.can_redo:
+            return
+
+        try:
+            redone_pick = self.session.redo_last_pick()
+        except RuntimeError as error:
+            self.statusBar().showMessage(str(error), 5000)
+            return
+
+        self.save_active_session()
+        self.clear_recommendations()
+        self.refresh_draft_view()
+
+        self.statusBar().showMessage(
+            f"Redid the selection of {redone_pick.player.name}.",
             6000,
         )
 
@@ -1453,6 +1457,9 @@ class GridironWindow(QMainWindow):
             )
             self.draft_board_dialog.undo_requested.connect(
                 self.undo_last_pick
+            )
+            self.draft_board_dialog.redo_requested.connect(
+                self.redo_last_pick
             )
             self.draft_board_dialog.analyze_players_requested.connect(
                 self.analyze_players_from_draft_room

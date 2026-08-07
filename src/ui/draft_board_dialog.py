@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import QDialog, QSplitter, QVBoxLayout, QWidget
 
 from live_draft import LiveDraftSession
@@ -512,6 +513,7 @@ class DraftBoardDialog(QDialog):
     record_player_requested = Signal(str)
     analyze_players_requested = Signal(object)
     undo_requested = Signal()
+    redo_requested = Signal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -543,6 +545,17 @@ class DraftBoardDialog(QDialog):
         self.workspace.record_requested.connect(self.record_player_requested.emit)
         self.workspace.analyze_requested.connect(self.analyze_players_requested.emit)
         self.workspace.undo_requested.connect(self.undo_requested.emit)
+        self.workspace.redo_requested.connect(self.redo_requested.emit)
+
+        # The Draft Room is a separate active window, so the MainWindow QAction
+        # does not reliably receive Cmd+Z on macOS. Bind Undo to this window too.
+        self.undo_shortcut = QShortcut(QKeySequence.StandardKey.Undo, self)
+        self.undo_shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+        self.undo_shortcut.activated.connect(self.undo_requested.emit)
+
+        self.redo_shortcut = QShortcut(QKeySequence.StandardKey.Redo, self)
+        self.redo_shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+        self.redo_shortcut.activated.connect(self.redo_requested.emit)
 
         self.main_splitter.addWidget(self.board_host)
         self.main_splitter.addWidget(self.workspace)

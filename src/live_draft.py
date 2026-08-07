@@ -53,6 +53,10 @@ class LiveDraftSession:
             DraftPick
         ] = []
 
+        # Standard undo/redo semantics for the active in-memory draft.
+        # Any brand-new pick after an undo clears the redo history.
+        self._redo_stack: list[DraftPick] = []
+
         self.state.current_pick = 1
 
         self.restore_picks(
@@ -120,6 +124,10 @@ class LiveDraftSession:
             for draft_pick
             in self.draft_results
         )
+
+    @property
+    def can_redo(self) -> bool:
+        return bool(self._redo_stack)
 
     def player_for_name(
         self,
@@ -193,6 +201,8 @@ class LiveDraftSession:
     def record_pick(
         self,
         player_name: str,
+        *,
+        preserve_redo: bool = False,
     ) -> DraftPick:
         if self.is_complete:
             raise RuntimeError(
@@ -244,6 +254,9 @@ class LiveDraftSession:
         team = self.league.teams[
             team_number - 1
         ]
+
+        if not preserve_redo:
+            self._redo_stack.clear()
 
         team.add_player(
             player
@@ -299,8 +312,37 @@ class LiveDraftSession:
                 break
 
         self.board.restore_player(player)
+        self._redo_stack.append(draft_pick)
         self.state.current_pick = self.current_pick
         return draft_pick
+
+    def redo_last_pick(self) -> DraftPick:
+        """Reapply the most recently undone pick without rebuilding the session."""
+        if not self._redo_stack:
+            raise RuntimeError("There is no draft pick to redo.")
+
+        draft_pick = self._redo_stack.pop()
+
+        # Redo is only valid on the exact pick/team that was undone.
+        if (
+            draft_pick.overall != self.current_pick
+            or draft_pick.team_number != self.current_team_number
+        ):
+            self._redo_stack.append(draft_pick)
+            raise RuntimeError(
+                "The draft changed after undo; that pick can no longer be redone."
+            )
+
+        try:
+            redone = self.record_pick(
+                draft_pick.player.name,
+                preserve_redo=True,
+            )
+        except Exception:
+            self._redo_stack.append(draft_pick)
+            raise
+
+        return redone
 
     def available_players(
         self,

@@ -65,6 +65,7 @@ class DraftRoomPlayerBrowser(QFrame):
     record_requested = Signal(str)
     analyze_requested = Signal(object)
     undo_requested = Signal()
+    redo_requested = Signal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -165,6 +166,12 @@ class DraftRoomPlayerBrowser(QFrame):
         self.undo_button.clicked.connect(self.undo_requested.emit)
         actions.addWidget(self.undo_button)
 
+        self.redo_button = QPushButton("REDO")
+        self.redo_button.setObjectName("WorkspaceSecondaryButton")
+        self.redo_button.setFixedHeight(34)
+        self.redo_button.clicked.connect(self.redo_requested.emit)
+        actions.addWidget(self.redo_button)
+
         self.record_button = QPushButton("RECORD PICK")
         self.record_button.setObjectName("WorkspacePrimaryButton")
         self.record_button.setFixedHeight(34)
@@ -184,6 +191,8 @@ class DraftRoomPlayerBrowser(QFrame):
         if session is None:
             self.context_label.setText("No active draft.")
             self._known_available_names.clear()
+            self.undo_button.setEnabled(False)
+            self.redo_button.setEnabled(False)
             self.refresh_table()
             return
         elif session.is_complete:
@@ -200,6 +209,7 @@ class DraftRoomPlayerBrowser(QFrame):
             )
 
         self.undo_button.setEnabled(bool(session.draft_results))
+        self.redo_button.setEnabled(session.can_redo)
         self._refresh_position_tabs()
 
         new_names = {player.name for player in session.available_players()}
@@ -423,19 +433,40 @@ class DraftRoomPlayerBrowser(QFrame):
         header = self.table.horizontalHeader()
         header.setStretchLastSection(False)
 
+        # ResizeToContents is surprisingly expensive on a frequently rebuilt
+        # QTableWidget because Qt keeps measuring cell contents. Keep PLAYER fluid
+        # and use predictable widths for the numeric/stat columns instead.
+        widths = {
+            "rank": 42,
+            "adp": 54,
+            "bye": 46,
+            "projection": 62,
+            "tier": 46,
+            "position": 82,
+            "passing_yards": 72,
+            "passing_touchdowns": 62,
+            "interceptions": 48,
+            "rushing_attempts": 68,
+            "rushing_yards": 72,
+            "rushing_touchdowns": 62,
+            "receptions": 52,
+            "receiving_yards": 72,
+            "receiving_touchdowns": 62,
+            "field_goals_made": 52,
+            "field_goals_attempted": 52,
+            "extra_points_made": 52,
+            "sacks": 52,
+            "fumble_recoveries": 48,
+            "touchdowns": 48,
+            "points_allowed": 48,
+        }
+
         for column, (_title, key) in enumerate(schema):
             if key == "player":
                 header.setSectionResizeMode(column, QHeaderView.ResizeMode.Stretch)
             else:
-                header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
-
-        # Keep player identity prominent, but stop it from swallowing the entire panel.
-        player_column = next(
-            (index for index, (_title, key) in enumerate(schema) if key == "player"),
-            None,
-        )
-        if player_column is not None:
-            self.table.setColumnWidth(player_column, 210)
+                header.setSectionResizeMode(column, QHeaderView.ResizeMode.Fixed)
+                self.table.setColumnWidth(column, widths.get(key, 58))
 
     @staticmethod
     def _format_stat(value: float | int | None) -> str:
@@ -541,17 +572,24 @@ class DraftRoomPlayerBrowser(QFrame):
                 self._known_available_names.clear()
                 return
 
-            for player in self._session.available_players():
-                if not self._player_matches_current_view(player):
-                    continue
-                row = self.table.rowCount()
-                self.table.insertRow(row)
+            available_players = self._session.available_players()
+            visible_players = [
+                player
+                for player in available_players
+                if self._player_matches_current_view(player)
+            ]
+
+            # Allocate the final table shape once. Repeated insertRow() calls cause
+            # Qt to shift its internal model/layout on every player.
+            self.table.setRowCount(len(visible_players))
+
+            for row, player in enumerate(visible_players):
                 self._populate_player_row(row, player)
                 if player.name in previously_selected:
                     self.table.selectRow(row)
 
             self._known_available_names = {
-                player.name for player in self._session.available_players()
+                player.name for player in available_players
             }
         finally:
             self.table.blockSignals(False)
@@ -952,6 +990,7 @@ class DraftRoomWorkspace(QWidget):
     record_requested = Signal(str)
     analyze_requested = Signal(object)
     undo_requested = Signal()
+    redo_requested = Signal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -972,6 +1011,7 @@ class DraftRoomWorkspace(QWidget):
         self.players.record_requested.connect(self.record_requested.emit)
         self.players.analyze_requested.connect(self.analyze_requested.emit)
         self.players.undo_requested.connect(self.undo_requested.emit)
+        self.players.redo_requested.connect(self.redo_requested.emit)
 
         self.splitter.addWidget(self.players)
         self.splitter.addWidget(self.roster)
