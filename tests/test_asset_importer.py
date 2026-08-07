@@ -77,4 +77,8 @@ match, match_type = module.choose_match(
 )
 assert_pass("ambiguous names remain unmatched", match is None)
 
+
+# Retina-quality masters should stay comfortably above the 52px display size.
+assert_pass("headshot master size is 256px", module.IMAGE_SIZE == (256, 256))
+
 print("\nALL ASSET IMPORTER TESTS PASSED")

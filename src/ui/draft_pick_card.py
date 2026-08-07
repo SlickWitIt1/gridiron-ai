@@ -29,6 +29,7 @@ class DraftPickCard(QFrame):
     """One draft-board pick card with local assets and hover intelligence."""
 
     _team_logo_cache: dict[tuple[str, int, int, int], QPixmap] = {}
+    _headshot_cache: dict[tuple[str, int, int, int], QPixmap] = {}
 
     hovered = Signal(object)
     hover_ended = Signal()
@@ -255,12 +256,50 @@ class DraftPickCard(QFrame):
         self.team_logo_label.show()
 
     def _set_headshot(self, player_name: str, position: str) -> None:
+        """Render a sharp rounded headshot on Retina/HiDPI displays.
+
+        The QLabel dimensions are logical pixels. On a Retina display, drawing a
+        52x52 physical-pixel image into a 52x52 logical-pixel label makes the image
+        look soft. We instead build the rounded pixmap at the display's device-pixel
+        resolution, mark it with the matching DPR, and cache the finished result.
+        """
         path = DEFAULT_ASSET_MANAGER.headshot(player_name)
         if path is not None:
+            dpr = max(1.0, float(self.devicePixelRatioF()))
+            logical = self.headshot_label.size()
+            pixel_width = max(1, round(logical.width() * dpr))
+            pixel_height = max(1, round(logical.height() * dpr))
+            cache_key = (
+                str(path),
+                pixel_width,
+                pixel_height,
+                round(dpr * 100),
+            )
+
+            cached = self._headshot_cache.get(cache_key)
+            if cached is not None and not cached.isNull():
+                self.headshot_label.setPixmap(cached)
+                self.headshot_label.setText("")
+                self.headshot_label.setStyleSheet(
+                    "QLabel#DraftCardHeadshot { background: transparent; border: 0; }"
+                )
+                self.headshot_label.show()
+                return
+
             pixmap = QPixmap(str(path))
             if not pixmap.isNull():
-                self.headshot_label.setPixmap(self._rounded_pixmap(pixmap))
+                rounded = self._rounded_pixmap(
+                    pixmap,
+                    pixel_width=pixel_width,
+                    pixel_height=pixel_height,
+                    dpr=dpr,
+                )
+                self._headshot_cache[cache_key] = rounded
+                self.headshot_label.setPixmap(rounded)
                 self.headshot_label.setText("")
+                self.headshot_label.setStyleSheet(
+                    "QLabel#DraftCardHeadshot { background: transparent; border: 0; }"
+                )
                 self.headshot_label.show()
                 return
 
@@ -279,32 +318,39 @@ class DraftPickCard(QFrame):
         )
         self.headshot_label.show()
 
-    def _rounded_pixmap(self, pixmap: QPixmap) -> QPixmap:
-        size = self.headshot_label.size()
+    @staticmethod
+    def _rounded_pixmap(
+        pixmap: QPixmap,
+        *,
+        pixel_width: int,
+        pixel_height: int,
+        dpr: float,
+    ) -> QPixmap:
+        target_size = QSize(pixel_width, pixel_height)
         scaled = pixmap.scaled(
-            size,
+            target_size,
             Qt.AspectRatioMode.KeepAspectRatioByExpanding,
             Qt.TransformationMode.SmoothTransformation,
         )
 
-        x = max(0, (scaled.width() - size.width()) // 2)
-        y = max(0, (scaled.height() - size.height()) // 2)
-        cropped = scaled.copy(x, y, size.width(), size.height())
+        x = max(0, (scaled.width() - pixel_width) // 2)
+        y = max(0, (scaled.height() - pixel_height) // 2)
+        cropped = scaled.copy(x, y, pixel_width, pixel_height)
 
-        result = QPixmap(size)
+        result = QPixmap(target_size)
         result.fill(Qt.GlobalColor.transparent)
 
         painter = QPainter(result)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        path = QPainterPath()
-        path.addRoundedRect(QRectF(result.rect()), 12, 12)
-        painter.setClipPath(path)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        clip_path = QPainterPath()
+        radius = 12.0 * dpr
+        clip_path.addRoundedRect(QRectF(result.rect()), radius, radius)
+        painter.setClipPath(clip_path)
         painter.drawPixmap(0, 0, cropped)
         painter.end()
 
-        self.headshot_label.setStyleSheet(
-            "QLabel#DraftCardHeadshot { background: transparent; border: 0; }"
-        )
+        result.setDevicePixelRatio(dpr)
         return result
 
     @staticmethod

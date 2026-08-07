@@ -31,7 +31,7 @@ from team import base_position
 PLAYERS_URL = "https://api.sleeper.app/v1/players/nfl"
 HEADSHOT_URL = "https://sleepercdn.com/content/nfl/players/{player_id}.jpg"
 USER_AGENT = "GridironAI-AssetImporter/1.1"
-IMAGE_SIZE = (160, 160)
+IMAGE_SIZE = (256, 256)
 
 SUFFIXES = {"jr", "sr", "ii", "iii", "iv", "v"}
 
@@ -234,7 +234,7 @@ def save_headshot(image_bytes: bytes, destination: Path) -> None:
             image,
             IMAGE_SIZE,
             method=Image.Resampling.LANCZOS,
-            centering=(0.5, 0.42),
+            centering=(0.50, 0.36),
         )
         image.save(destination, format="PNG", optimize=True)
 
@@ -257,6 +257,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--force-images",
+        "--force",
+        dest="force_images",
         action="store_true",
         help="Re-download headshots even when a cached image already exists.",
     )
