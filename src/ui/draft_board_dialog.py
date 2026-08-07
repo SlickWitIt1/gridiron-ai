@@ -1,291 +1,276 @@
+from __future__ import annotations
+
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
-from PySide6.QtWidgets import (
-    QDialog, QHeaderView, QLabel, QTableWidget,
-    QTableWidgetItem, QVBoxLayout,
-)
+from PySide6.QtWidgets import QDialog, QVBoxLayout
 
 from live_draft import LiveDraftSession
-from preferences import normalize_name
+from ui.draft_board_widget import DraftBoardWidget
+
+
+DRAFT_BOARD_STYLESHEET = r"""
+QDialog {
+    background-color: #0b1020;
+    color: #f8fafc;
+}
+
+/* The app-level stylesheet gives QWidget subclasses a dark background.
+   Draft-room labels should sit directly on their cards instead of looking
+   like little black text boxes. */
+QLabel#DraftRoomTitle,
+QLabel#DraftRoomSummary,
+QLabel#DraftRoomMetaTitle,
+QLabel#DraftRoundHeader,
+QLabel#DraftRoundLabel,
+QLabel#DraftTeamName,
+QLabel#DraftCardPick,
+QLabel#DraftCardPlayer,
+QLabel#DraftCardPosition,
+QLabel#DraftCardTeam,
+QLabel#DraftRoomLegendText {
+    background-color: transparent;
+    border: 0;
+}
+
+QFrame#DraftRoomHeaderCard {
+    background-color: #101725;
+    border: 1px solid #243248;
+    border-radius: 14px;
+}
+
+QLabel#DraftRoomTitle {
+    color: #f8fafc;
+    font-size: 19px;
+    font-weight: 950;
+    letter-spacing: 1px;
+}
+
+QLabel#DraftRoomSummary {
+    color: #8ea0b8;
+    font-size: 12px;
+}
+
+QLabel#DraftRoomMetaTitle {
+    color: #64748b;
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: 1px;
+}
+
+QProgressBar#DraftRoomProgress {
+    background-color: #202b3d;
+    border: 0;
+    border-radius: 5px;
+}
+
+QProgressBar#DraftRoomProgress::chunk {
+    background-color: #3b82f6;
+    border-radius: 5px;
+}
+
+QLabel#DraftRoomOnClock {
+    background-color: #182235;
+    border: 1px solid #334155;
+    border-radius: 9px;
+    color: #cbd5e1;
+    font-size: 11px;
+    font-weight: 900;
+    padding: 8px 10px;
+}
+
+QLabel#DraftRoomOnClock[userTurn="true"] {
+    background-color: #123022;
+    border-color: #22c55e;
+    color: #86efac;
+}
+
+QScrollArea#DraftBoardScroll,
+QWidget#DraftBoardCanvas {
+    background-color: #0b1020;
+    border: 0;
+}
+
+QLabel#DraftRoundHeader,
+QLabel#DraftRoundLabel {
+    background-color: #111827;
+    border: 1px solid #243248;
+    border-radius: 8px;
+    color: #64748b;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: .5px;
+}
+
+QFrame#DraftTeamHeader {
+    background-color: #111827;
+    border: 1px solid #243248;
+    border-radius: 10px;
+}
+
+QFrame#DraftTeamHeader[userTeam="true"] {
+    background-color: #142b4d;
+    border: 1px solid #3b82f6;
+}
+
+QLabel#DraftTeamName {
+    color: #e5edf8;
+    font-size: 11px;
+    font-weight: 950;
+    letter-spacing: .4px;
+}
+
+QFrame#DraftTeamHeader[userTeam="true"] QLabel#DraftTeamName {
+    color: #93c5fd;
+}
+
+
+QFrame#DraftPickCard {
+    background-color: #121a28;
+    border: 1px solid #253248;
+    border-radius: 10px;
+}
+
+QFrame#DraftPickCard[position="rb"] {
+    background-color: #0f5a43;
+    border-color: #197a5b;
+}
+
+QFrame#DraftPickCard[position="wr"] {
+    background-color: #0f536b;
+    border-color: #197694;
+}
+
+QFrame#DraftPickCard[position="qb"] {
+    background-color: #55295f;
+    border-color: #7f448c;
+}
+
+QFrame#DraftPickCard[position="te"] {
+    background-color: #6a4319;
+    border-color: #946124;
+}
+
+QFrame#DraftPickCard[position="dst"] {
+    background-color: #374151;
+    border-color: #64748b;
+}
+
+QFrame#DraftPickCard[position="k"] {
+    background-color: #5b5218;
+    border-color: #8a7d24;
+}
+
+QFrame#DraftPickCard[userTeam="true"] {
+    border: 1px solid #3b82f6;
+}
+
+QFrame#DraftPickCard[hovered="true"] {
+    border: 2px solid #7dd3fc;
+}
+
+QFrame#DraftPickCard[currentPick="true"] {
+    background-color: #18233a;
+    border: 2px solid #facc15;
+}
+
+QFrame#DraftPickCard[currentPick="true"][pulse="true"] {
+    border: 3px solid #fde047;
+}
+
+QLabel#DraftCardPick {
+    color: #91a0b7;
+    font-size: 10px;
+    font-weight: 900;
+}
+
+QLabel#DraftCardPlayer {
+    color: #f8fafc;
+    font-size: 12px;
+    font-weight: 950;
+}
+
+QLabel#DraftCardPosition {
+    color: #e5edf8;
+    font-size: 10px;
+    font-weight: 950;
+}
+
+QLabel#DraftCardTeam {
+    color: #c0cad8;
+    font-size: 9px;
+    font-weight: 750;
+}
+
+QLabel#DraftCardBadge {
+    background-color: #202b3d;
+    border-radius: 6px;
+    color: #facc15;
+    font-size: 9px;
+    font-weight: 950;
+    padding: 2px 5px;
+}
+
+QFrame#DraftRoomLegend {
+    background-color: #101725;
+    border: 1px solid #243248;
+    border-radius: 10px;
+}
+
+QLabel#DraftRoomLegendText {
+    color: #8ea0b8;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+QScrollBar:vertical,
+QScrollBar:horizontal {
+    background-color: #101725;
+    border: 0;
+}
+
+QScrollBar::handle:vertical,
+QScrollBar::handle:horizontal {
+    background-color: #334155;
+    border-radius: 5px;
+    min-width: 28px;
+    min-height: 28px;
+}
+
+QScrollBar::handle:vertical:hover,
+QScrollBar::handle:horizontal:hover {
+    background-color: #475569;
+}
+
+QScrollBar::add-line,
+QScrollBar::sub-line {
+    width: 0;
+    height: 0;
+}
+"""
 
 
 class DraftBoardDialog(QDialog):
-    def __init__(
-        self,
-        parent=None,
-    ) -> None:
+    """Modern card-based draft room while preserving the existing dialog API."""
+
+    def __init__(self, parent=None) -> None:
         super().__init__(parent)
 
-        self.setWindowTitle(
-            "Gridiron AI — Draft Board"
-        )
-
-        self.resize(
-            1450,
-            760,
-        )
-
-        self.setMinimumSize(
-            1000,
-            560,
-        )
+        self.setWindowTitle("Gridiron AI — Live Draft Room")
+        self.resize(1650, 900)
+        self.setMinimumSize(1100, 650)
+        self.setWindowFlag(Qt.WindowType.WindowMaximizeButtonHint, True)
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(0)
 
-        self.heading_label = QLabel(
-            "VISUAL DRAFT BOARD"
-        )
+        self.board = DraftBoardWidget()
+        layout.addWidget(self.board)
 
-        self.heading_label.setAlignment(
-            Qt.AlignmentFlag.AlignCenter
-        )
-
-        self.heading_label.setStyleSheet(
-            "font-size: 22px; "
-            "font-weight: 800; "
-            "padding: 8px;"
-        )
-
-        layout.addWidget(
-            self.heading_label
-        )
-
-        self.summary_label = QLabel(
-            "No active draft."
-        )
-
-        self.summary_label.setAlignment(
-            Qt.AlignmentFlag.AlignCenter
-        )
-
-        self.summary_label.setStyleSheet(
-            "color: #cbd5e1; "
-            "padding-bottom: 8px;"
-        )
-
-        layout.addWidget(
-            self.summary_label
-        )
-
-        self.table = QTableWidget(
-            16,
-            10,
-        )
-
-        self.table.setHorizontalHeaderLabels(
-            tuple(
-                f"Team {team_number}"
-                for team_number in range(1, 11)
-            )
-        )
-
-        self.table.setVerticalHeaderLabels(
-            tuple(
-                f"Round {round_number}"
-                for round_number in range(1, 17)
-            )
-        )
-
-        self.table.setEditTriggers(
-            QTableWidget.EditTrigger.NoEditTriggers
-        )
-
-        self.table.setSelectionMode(
-            QTableWidget.SelectionMode.NoSelection
-        )
-
-        self.table.setAlternatingRowColors(
-            True
-        )
-
-        self.table.setWordWrap(
-            True
-        )
-
-        horizontal_header = (
-            self.table.horizontalHeader()
-        )
-
-        for column in range(10):
-            horizontal_header.setSectionResizeMode(
-                column,
-                QHeaderView.ResizeMode.Stretch,
-            )
-
-        vertical_header = (
-            self.table.verticalHeader()
-        )
-
-        vertical_header.setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents
-        )
-
-        layout.addWidget(
-            self.table
-        )
-
-        self.legend_label = QLabel(
-            "Blue border = your team   •   "
-            "Green = My Guy   •   "
-            "Gold = current pick"
-        )
-
-        self.legend_label.setAlignment(
-            Qt.AlignmentFlag.AlignCenter
-        )
-
-        self.legend_label.setStyleSheet(
-            "padding: 8px; "
-            "font-weight: 700;"
-        )
-
-        layout.addWidget(
-            self.legend_label
-        )
+        self.setStyleSheet(DRAFT_BOARD_STYLESHEET)
 
     def refresh_board(
         self,
         session: LiveDraftSession | None,
         approved_players: set[str],
     ) -> None:
-        self.table.clearContents()
-
-        if session is None:
-            self.summary_label.setText(
-                "No active draft."
-            )
-            return
-
-        self.summary_label.setText(
-            f"Completed picks: "
-            f"{len(session.draft_results)}/160  •  "
-            f"Next pick: {session.current_pick}  •  "
-            f"Your slot: {session.user_team_number}"
-        )
-
-        picks_by_overall = {
-            draft_pick.overall: draft_pick
-            for draft_pick in session.draft_results
-        }
-
-        for overall_pick, team_number in enumerate(
-            session.league.draft_order,
-            start=1,
-        ):
-            round_number = (
-                (overall_pick - 1)
-                // session.league.num_teams
-            ) + 1
-
-            row = round_number - 1
-            column = team_number - 1
-
-            draft_pick = picks_by_overall.get(
-                overall_pick
-            )
-
-            if draft_pick is None:
-                text = f"#{overall_pick}"
-            else:
-                player = draft_pick.player
-                text = (
-                    f"#{overall_pick}  "
-                    f"{player.position}\n"
-                    f"{player.name}"
-                )
-
-            item = QTableWidgetItem(text)
-
-            item.setTextAlignment(
-                Qt.AlignmentFlag.AlignCenter
-            )
-
-            tooltip_parts = [
-                f"Overall Pick {overall_pick}",
-                f"Team {team_number}",
-                f"Round {round_number}",
-            ]
-
-            if draft_pick is not None:
-                tooltip_parts.append(
-                    draft_pick.player.name
-                )
-
-            item.setToolTip(
-                " | ".join(tooltip_parts)
-            )
-
-            styles: list[str] = []
-
-            if (
-                team_number
-                == session.user_team_number
-            ):
-                styles.extend(
-                    (
-                        "border: 2px solid #3b82f6;",
-                        "font-weight: 700;",
-                    )
-                )
-
-            if (
-                draft_pick is not None
-                and normalize_name(
-                    draft_pick.player.name
-                ) in approved_players
-            ):
-                item.setForeground(
-                    QColor("#86efac")
-                )
-
-            if overall_pick == session.current_pick:
-                item.setBackground(
-                    QColor("#7c5c00")
-                )
-                styles.append(
-                    "font-weight: 800;"
-                )
-
-            if styles:
-                item.setData(
-                    Qt.ItemDataRole.UserRole + 1,
-                    " ".join(styles),
-                )
-
-            self.table.setItem(
-                row,
-                column,
-                item,
-            )
-
-        self.highlight_user_team(
-            session.user_team_number
-        )
-
-        self.table.resizeRowsToContents()
-
-    def highlight_user_team(
-        self,
-        user_team_number: int,
-    ) -> None:
-        user_column = user_team_number - 1
-
-        for row in range(
-            self.table.rowCount()
-        ):
-            item = self.table.item(
-                row,
-                user_column,
-            )
-
-            if item is None:
-                continue
-
-            font = item.font()
-            font.setBold(True)
-            item.setFont(font)
-
-            if item.background().color().name() == "#000000":
-                item.setBackground(
-                    QColor("#172554")
-                )
+        self.board.refresh_board(session, approved_players)
