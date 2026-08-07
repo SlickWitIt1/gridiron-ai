@@ -441,7 +441,12 @@ class RecommendationEngine:
                 100.0,
             )
 
-            expected_value_lost = tier_drop_points * wait_risk
+            # Roster-path opportunity cost comes directly from paired
+            # counterfactual simulations. Positive means taking this player
+            # now produced more projected value across the current and next
+            # user selections; negative means the pass path performed better.
+            opportunity_cost = wait_result.opportunity_cost
+            expected_value_lost = max(0.0, opportunity_cost)
             confidence = self._confidence(
                 total_score=total_score,
                 survival_probability=survival_probability,
@@ -483,10 +488,37 @@ class RecommendationEngine:
                     f"projected points lower."
                 )
 
-            if expected_value_lost >= 3.0:
+            if opportunity_cost >= 3.0:
+                pass_path = " then ".join(
+                    name
+                    for name in (
+                        wait_result.likely_pass_current_player,
+                        wait_result.likely_pass_next_player,
+                    )
+                    if name
+                )
+                take_next = wait_result.likely_take_next_player
                 reasons.append(
-                    f"Waiting risks about {expected_value_lost:.1f} "
-                    f"projected points of value."
+                    f"The take-now path projects {opportunity_cost:.1f} "
+                    f"points better across your next two picks."
+                )
+                if take_next and pass_path:
+                    reasons.append(
+                        f"Most likely paths: take {player.name} then "
+                        f"{take_next}; passing most often leads to {pass_path}."
+                    )
+            elif opportunity_cost <= -3.0:
+                reasons.append(
+                    f"The simulated pass path projects "
+                    f"{abs(opportunity_cost):.1f} points better across "
+                    f"your next two picks."
+                )
+
+            if wait_result.tier_disappearance_probability >= 0.50:
+                reasons.append(
+                    f"There is a "
+                    f"{wait_result.tier_disappearance_probability:.0%} "
+                    f"chance this entire tier is gone by your next pick."
                 )
 
             if is_my_guy:
@@ -542,6 +574,25 @@ class RecommendationEngine:
                     tier_urgency=tier_info.urgency,
                     is_last_in_tier=tier_info.is_last_in_tier,
                     expected_value_lost=expected_value_lost,
+                    likely_take_next_player=(
+                        wait_result.likely_take_next_player
+                    ),
+                    likely_pass_current_player=(
+                        wait_result.likely_pass_current_player
+                    ),
+                    likely_pass_next_player=(
+                        wait_result.likely_pass_next_player
+                    ),
+                    take_path_projected_points=(
+                        wait_result.take_path_projected_points
+                    ),
+                    pass_path_projected_points=(
+                        wait_result.pass_path_projected_points
+                    ),
+                    opportunity_cost=opportunity_cost,
+                    tier_disappearance_probability=(
+                        wait_result.tier_disappearance_probability
+                    ),
                     score_breakdown=score_breakdown,
                     grade=self._grade(total_score),
                     action=self._action(survival_probability),

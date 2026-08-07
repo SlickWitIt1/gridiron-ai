@@ -133,6 +133,36 @@ class CommandCenterWidget(QWidget):
 
         layout.addWidget(self.hero_card)
 
+        cost_heading = QLabel("COST OF PASSING")
+        cost_heading.setObjectName("SubsectionHeading")
+        layout.addWidget(cost_heading)
+
+        self.cost_card = QFrame()
+        self.cost_card.setObjectName("CostOfPassingCard")
+        cost_layout = QVBoxLayout(self.cost_card)
+        cost_layout.setContentsMargins(16, 14, 16, 14)
+        cost_layout.setSpacing(10)
+
+        self.cost_headline_label = QLabel("Run an analysis to compare roster paths.")
+        self.cost_headline_label.setObjectName("CostHeadline")
+        self.cost_headline_label.setWordWrap(True)
+        cost_layout.addWidget(self.cost_headline_label)
+
+        path_grid = QGridLayout()
+        path_grid.setSpacing(10)
+
+        self.take_path_frame = self._path_card("TAKE NOW", "—", "—", "take")
+        self.pass_path_frame = self._path_card("PASS", "—", "—", "pass")
+        path_grid.addWidget(self.take_path_frame, 0, 0)
+        path_grid.addWidget(self.pass_path_frame, 0, 1)
+        cost_layout.addLayout(path_grid)
+
+        self.tier_risk_label = QLabel("Tier disappearance risk: —")
+        self.tier_risk_label.setObjectName("TierRiskLabel")
+        cost_layout.addWidget(self.tier_risk_label)
+
+        layout.addWidget(self.cost_card)
+
         evidence_grid = QGridLayout()
         evidence_grid.setSpacing(8)
 
@@ -143,16 +173,12 @@ class CommandCenterWidget(QWidget):
             "ROSTER NEED", "No analysis yet"
         )
         self.tier_drop_card = self._small_card(
-            "TIER DROP", "No analysis yet"
-        )
-        self.expected_loss_card = self._small_card(
-            "EXPECTED LOSS", "No analysis yet"
+            "TIER STATUS", "No analysis yet"
         )
 
         evidence_grid.addWidget(self.wait_risk_card, 0, 0)
         evidence_grid.addWidget(self.roster_fit_card, 0, 1)
-        evidence_grid.addWidget(self.tier_drop_card, 1, 0)
-        evidence_grid.addWidget(self.expected_loss_card, 1, 1)
+        evidence_grid.addWidget(self.tier_drop_card, 0, 2)
         layout.addLayout(evidence_grid)
 
         breakdown_heading = QLabel("SCORE BREAKDOWN")
@@ -298,6 +324,38 @@ class CommandCenterWidget(QWidget):
         return label
 
     @staticmethod
+    def _path_card(
+        title: str,
+        first_player: str,
+        second_player: str,
+        path_type: str,
+    ) -> QFrame:
+        frame = QFrame()
+        frame.setObjectName("PathCard")
+        frame.setProperty("pathType", path_type)
+        card_layout = QVBoxLayout(frame)
+        card_layout.setContentsMargins(12, 10, 12, 10)
+        card_layout.setSpacing(4)
+
+        title_label = QLabel(title)
+        title_label.setObjectName("PathTitle")
+        first_label = QLabel(first_player)
+        first_label.setObjectName("PathPlayer")
+        arrow_label = QLabel("↓")
+        arrow_label.setObjectName("PathArrow")
+        second_label = QLabel(second_player)
+        second_label.setObjectName("PathPlayer")
+
+        card_layout.addWidget(title_label)
+        card_layout.addWidget(first_label)
+        card_layout.addWidget(arrow_label)
+        card_layout.addWidget(second_label)
+
+        frame.first_player_label = first_label
+        frame.second_player_label = second_label
+        return frame
+
+    @staticmethod
     def _small_card(title: str, value: str) -> QFrame:
         frame = QFrame()
         frame.setObjectName("InsightCard")
@@ -340,7 +398,14 @@ class CommandCenterWidget(QWidget):
         self.wait_risk_card.value_label.setText("No analysis yet")
         self.roster_fit_card.value_label.setText("No analysis yet")
         self.tier_drop_card.value_label.setText("No analysis yet")
-        self.expected_loss_card.value_label.setText("No analysis yet")
+        self.cost_headline_label.setText(
+            "Run an analysis to compare roster paths."
+        )
+        self.take_path_frame.first_player_label.setText("—")
+        self.take_path_frame.second_player_label.setText("—")
+        self.pass_path_frame.first_player_label.setText("—")
+        self.pass_path_frame.second_player_label.setText("—")
+        self.tier_risk_label.setText("Tier disappearance risk: —")
 
         for progress_bar, value_label in self.breakdown_rows.values():
             progress_bar.setValue(0)
@@ -441,12 +506,20 @@ class CommandCenterWidget(QWidget):
                 QSizePolicy.Policy.Fixed,
             )
             button.setMinimumHeight(64)
+            tier_text = (
+                f"Tier {recommendation.tier_number} · "
+                f"{recommendation.players_remaining_in_tier} left"
+                if recommendation.tier_number > 0
+                else "Tier unavailable"
+            )
             button.setText(
                 f"#{rank}  {recommendation.player_name}   "
                 f"{position}\n"
                 f"{recommendation.score:.0f}/100  •  "
-                f"{recommendation.grade}  •  "
-                f"{survival_text}  •  {recommendation.action}"
+                f"{recommendation.grade}  •  {tier_text}  •  "
+                f"{survival_text}  •  "
+                f"Cost {recommendation.opportunity_cost:+.1f}  •  "
+                f"{recommendation.action}"
             )
             button.setStyleSheet(
                 "QPushButton {"
@@ -507,8 +580,15 @@ class CommandCenterWidget(QWidget):
         )
 
         self.player_name_label.setText(recommendation.player_name)
+        tier_meta = (
+            f"  •  TIER {recommendation.tier_number}"
+            f"  •  {recommendation.players_remaining_in_tier} LEFT"
+            if recommendation.tier_number > 0
+            else ""
+        )
         self.player_meta_label.setText(
             f"{position}  •  {recommendation.projected_points:.1f} projected pts"
+            + tier_meta
             + ("  •  ★ MY GUY" if recommendation.is_my_guy else "")
         )
         self.position_badge.setText(position)
@@ -547,21 +627,67 @@ class CommandCenterWidget(QWidget):
             wait_text = f"Lower risk — {survival:.1%} survives"
 
         tier_drop = recommendation.tier_drop_points
-        tier_text = (
-            f"Major cliff — next {position} is {tier_drop:.1f} pts lower"
-            if tier_drop >= 15.0
-            else f"Meaningful drop — {tier_drop:.1f} pts"
-            if tier_drop >= 7.0
-            else f"Small drop — {tier_drop:.1f} pts"
-            if tier_drop > 0.0
-            else "No immediate positional cliff"
+        if recommendation.tier_number <= 0:
+            tier_text = "Tier data unavailable"
+        else:
+            tier_status = (
+                f"Tier {recommendation.tier_number} — LAST PLAYER"
+                if recommendation.is_last_in_tier
+                else (
+                    f"Tier {recommendation.tier_number} — "
+                    f"{recommendation.players_remaining_in_tier} remain"
+                )
+            )
+            drop_text = (
+                f"next tier is {tier_drop:.1f} pts lower"
+                if tier_drop > 0.0
+                else "no measured next-tier cliff"
+            )
+            tier_text = (
+                f"{tier_status}\n"
+                f"{recommendation.tier_urgency} urgency · {drop_text}"
+            )
+
+        opportunity_cost = recommendation.opportunity_cost
+        tier_risk = recommendation.tier_disappearance_probability
+
+        if opportunity_cost >= 3.0:
+            cost_headline = (
+                f"TAKE-NOW PATH: +{opportunity_cost:.1f} PROJECTED POINTS"
+            )
+            headline_state = "take"
+        elif opportunity_cost <= -3.0:
+            cost_headline = (
+                f"PASS PATH: +{abs(opportunity_cost):.1f} PROJECTED POINTS"
+            )
+            headline_state = "pass"
+        else:
+            cost_headline = "ROSTER PATHS PROJECT NEARLY EQUAL"
+            headline_state = "neutral"
+
+        self.cost_headline_label.setText(cost_headline)
+        self.cost_headline_label.setProperty("state", headline_state)
+        self.cost_headline_label.style().unpolish(self.cost_headline_label)
+        self.cost_headline_label.style().polish(self.cost_headline_label)
+
+        take_next = (
+            recommendation.likely_take_next_player or "Best available"
+        )
+        pass_current = (
+            recommendation.likely_pass_current_player or "Best available"
+        )
+        pass_next = (
+            recommendation.likely_pass_next_player or "Best available"
         )
 
-        expected_loss = recommendation.expected_value_lost
-        loss_text = (
-            f"{expected_loss:.1f} projected points if you wait"
-            if expected_loss > 0.0
-            else "Minimal projected opportunity cost"
+        self.take_path_frame.first_player_label.setText(
+            recommendation.player_name
+        )
+        self.take_path_frame.second_player_label.setText(take_next)
+        self.pass_path_frame.first_player_label.setText(pass_current)
+        self.pass_path_frame.second_player_label.setText(pass_next)
+        self.tier_risk_label.setText(
+            f"TIER DISAPPEARANCE RISK  {tier_risk:.0%}"
         )
 
         self.wait_risk_card.value_label.setText(wait_text)
@@ -570,7 +696,6 @@ class CommandCenterWidget(QWidget):
             f"{recommendation.roster_fit_score:+.1f}"
         )
         self.tier_drop_card.value_label.setText(tier_text)
-        self.expected_loss_card.value_label.setText(loss_text)
 
         for name, value, maximum in (
             recommendation.score_breakdown.component_items()

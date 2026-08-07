@@ -1,11 +1,13 @@
 import sys
 
-from PySide6.QtCore import QThread, Qt
-from PySide6.QtGui import QAction, QColor, QKeySequence
+from PySide6.QtCore import QSize, QThread, Qt
+from PySide6.QtGui import (
+    QAction, QColor, QFontDatabase, QIcon, QKeySequence, QPainter, QPixmap,
+)
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QHBoxLayout, QHeaderView, QLabel,
     QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMessageBox,
-    QPushButton, QSpinBox, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QPushButton, QSpinBox, QSplitter, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from draft_session_store import DraftSessionStore
@@ -30,6 +32,7 @@ POSITION_FILTERS = (
     "DST",
     "K",
 )
+
 
 
 class GridironWindow(QMainWindow):
@@ -57,6 +60,13 @@ class GridironWindow(QMainWindow):
 
         self.approved_players = load_my_guys()
 
+        self.available_player_font = QFontDatabase.systemFont(
+            QFontDatabase.SystemFont.FixedFont
+        )
+        self.available_player_font.setPointSize(12)
+        self.my_guy_icon = self._make_status_icon("#facc15")
+        self.normal_player_icon = self._make_status_icon("#3b4657")
+
         self.recommendation_thread: QThread | None = None
         self.recommendation_worker: RecommendationWorker | None = None
 
@@ -73,6 +83,21 @@ class GridironWindow(QMainWindow):
         self.statusBar().showMessage(
             "Gridiron AI ready."
         )
+
+    @staticmethod
+    def _make_status_icon(color: str) -> QIcon:
+        """Build one tiny cached status dot without per-row widgets."""
+        pixmap = QPixmap(14, 14)
+        pixmap.fill(Qt.GlobalColor.transparent)
+
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(color))
+        painter.drawEllipse(3, 3, 8, 8)
+        painter.end()
+
+        return QIcon(pixmap)
 
     def setup_ui(self) -> None:
         central_widget = QWidget()
@@ -105,46 +130,40 @@ class GridironWindow(QMainWindow):
         self.status_label = QLabel()
         self.status_label.hide()
 
-        self.content_layout = QHBoxLayout()
+        self.content_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.content_splitter.setObjectName("WarRoomSplitter")
+        self.content_splitter.setChildrenCollapsible(False)
+        self.content_splitter.setHandleWidth(8)
+        self.main_layout.addWidget(self.content_splitter, 1)
 
-        self.content_layout.setSpacing(
-            14
-        )
+        self.left_panel_widget = QWidget()
+        self.left_panel_widget.setObjectName("LeftPanel")
+        self.middle_panel_widget = QWidget()
+        self.middle_panel_widget.setObjectName("MiddlePanel")
+        self.right_panel_widget = QWidget()
+        self.right_panel_widget.setObjectName("RightPanel")
 
-        self.main_layout.addLayout(
-            self.content_layout
-        )
+        self.left_panel = QVBoxLayout(self.left_panel_widget)
+        self.middle_panel = QVBoxLayout(self.middle_panel_widget)
+        self.right_panel = QVBoxLayout(self.right_panel_widget)
 
-        self.left_panel = QVBoxLayout()
-        self.middle_panel = QVBoxLayout()
-        self.right_panel = QVBoxLayout()
+        for panel in (self.left_panel, self.middle_panel, self.right_panel):
+            panel.setContentsMargins(0, 0, 0, 0)
+            panel.setSpacing(8)
 
-        self.left_panel.setSpacing(
-            8
-        )
+        self.left_panel_widget.setMinimumWidth(245)
+        self.left_panel_widget.setMaximumWidth(330)
+        self.middle_panel_widget.setMinimumWidth(320)
+        self.middle_panel_widget.setMaximumWidth(470)
+        self.right_panel_widget.setMinimumWidth(560)
 
-        self.middle_panel.setSpacing(
-            8
-        )
-
-        self.right_panel.setSpacing(
-            8
-        )
-
-        self.content_layout.addLayout(
-            self.left_panel,
-            1,
-        )
-
-        self.content_layout.addLayout(
-            self.middle_panel,
-            2,
-        )
-
-        self.content_layout.addLayout(
-            self.right_panel,
-            2,
-        )
+        self.content_splitter.addWidget(self.left_panel_widget)
+        self.content_splitter.addWidget(self.middle_panel_widget)
+        self.content_splitter.addWidget(self.right_panel_widget)
+        self.content_splitter.setStretchFactor(0, 0)
+        self.content_splitter.setStretchFactor(1, 0)
+        self.content_splitter.setStretchFactor(2, 1)
+        self.content_splitter.setSizes([280, 390, 830])
 
         self.setup_left_panel()
         self.setup_middle_panel()
@@ -376,6 +395,7 @@ class GridironWindow(QMainWindow):
         self.search_input.setPlaceholderText(
             "Search player..."
         )
+        self.search_input.setMinimumHeight(40)
 
         self.search_input.textChanged.connect(
             self.refresh_available_players
@@ -405,6 +425,7 @@ class GridironWindow(QMainWindow):
         )
 
         self.available_list = QListWidget()
+        self.available_list.setObjectName("AvailablePlayersList")
 
         self.available_list.setSelectionMode(
             QListWidget.SelectionMode.ExtendedSelection
@@ -417,6 +438,10 @@ class GridironWindow(QMainWindow):
         self.available_list.itemDoubleClicked.connect(
             self.record_double_clicked_player
         )
+
+        self.available_list.setSpacing(1)
+        self.available_list.setUniformItemSizes(True)
+        self.available_list.setIconSize(QSize(14, 14))
 
         self.middle_panel.addWidget(
             self.available_list
@@ -469,7 +494,7 @@ class GridironWindow(QMainWindow):
         )
 
         legend = QLabel(
-            "★ My Guy   •   Double-click a player to record the pick"
+            "● My Guy   •   Double-click a player to record the pick"
         )
 
         self.middle_panel.addWidget(
@@ -750,66 +775,19 @@ class GridironWindow(QMainWindow):
         )
 
     def refresh_available_players(self) -> None:
-        self.available_list.clear()
+        # QListWidgetItem rows are intentionally lightweight. Avoiding
+        # setItemWidget() keeps scrolling, filtering, and selection responsive.
+        self.available_list.setUpdatesEnabled(False)
+        self.available_list.blockSignals(True)
 
-        if self.session is None:
-            return
+        try:
+            self.available_list.clear()
 
-        search_text = normalize_name(
-            self.search_input.text()
-        )
+            if self.session is None:
+                return
 
-        position_filter = (
-            self.position_filter.currentText()
-        )
-
-        for player in self.session.available_players():
-            normalized_name = normalize_name(
-                player.name
-            )
-
-            if (
-                search_text
-                and search_text not in normalized_name
-            ):
-                continue
-
-            player_position = (
-                player.position.upper()
-            )
-
-            if (
-                position_filter != "ALL"
-                and not player_position.startswith(
-                    position_filter
-                )
-            ):
-                continue
-
-            is_my_guy = (
-                normalized_name
-                in self.approved_players
-            )
-
-            star = (
-                "★ "
-                if is_my_guy
-                else ""
-            )
-
-            item = QListWidgetItem(
-                (
-                    f"{star}"
-                    f"{player.rank:>3} | "
-                    f"{player.position:<4} | "
-                    f"{player.name}"
-                )
-            )
-
-            item.setData(
-                Qt.ItemDataRole.UserRole,
-                player.name,
-            )
+            search_text = normalize_name(self.search_input.text())
+            position_filter = self.position_filter.currentText()
 
             position_colors = {
                 "QB": "#c084fc",
@@ -819,18 +797,55 @@ class GridironWindow(QMainWindow):
                 "DST": "#cbd5e1",
                 "K": "#fde047",
             }
-            base_position = player.position.upper().split("/")[0]
-            item.setForeground(QColor(position_colors.get(base_position, "#e2e8f0")))
 
-            tooltip = f"{base_position} • {player.team} • FantasyPros Rank {player.rank}"
-            if is_my_guy:
-                tooltip += " • My Guy"
-                item.setBackground(QColor("#203428"))
-            item.setToolTip(tooltip)
+            for player in self.session.available_players():
+                normalized_name = normalize_name(player.name)
 
-            self.available_list.addItem(
-                item
-            )
+                if search_text and search_text not in normalized_name:
+                    continue
+
+                player_position = player.position.upper()
+                if (
+                    position_filter != "ALL"
+                    and not player_position.startswith(position_filter)
+                ):
+                    continue
+
+                is_my_guy = normalized_name in self.approved_players
+                base_position = player.position.upper().split("/")[0]
+
+                # The icon occupies a permanent status column, while the
+                # fixed-width font keeps rank, position, and name aligned.
+                row_text = (
+                    f"{player.rank:>3}  "
+                    f"{player.position:<4}  "
+                    f"{player.name}"
+                )
+                item = QListWidgetItem(
+                    self.my_guy_icon if is_my_guy else self.normal_player_icon,
+                    row_text,
+                )
+                item.setFont(self.available_player_font)
+                item.setForeground(
+                    QColor(position_colors.get(base_position, "#e2e8f0"))
+                )
+                item.setData(Qt.ItemDataRole.UserRole, player.name)
+                item.setSizeHint(QSize(0, 36))
+
+                tooltip = (
+                    f"{base_position} • {player.team} • "
+                    f"FantasyPros Rank {player.rank}"
+                )
+                if is_my_guy:
+                    tooltip += " • My Guy"
+                item.setToolTip(tooltip)
+
+                self.available_list.addItem(item)
+        finally:
+            self.available_list.blockSignals(False)
+            self.available_list.setUpdatesEnabled(True)
+            self.available_list.viewport().update()
+            self.update_selected_players()
 
     def refresh_roster(self) -> None:
         self.roster_list.clear()

@@ -431,3 +431,174 @@ QProgressBar#DraftPulseBar::chunk {
     border-radius: 5px;
 }
 """
+
+# Ticket 054: command-center-first layout and aligned player rows.
+DARK_STYLESHEET += """
+QLineEdit {
+    min-height: 24px;
+    padding: 8px 10px;
+}
+
+QWidget#AvailablePlayerRow {
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 7px;
+}
+
+QWidget#AvailablePlayerRow[selected="true"] {
+    background-color: #1d4ed8;
+    border-color: #60a5fa;
+}
+
+QWidget#AvailablePlayerRow QLabel#AvailableRank {
+    color: #94a3b8;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+QWidget#AvailablePlayerRow QLabel#AvailableName {
+    color: #f8fafc;
+    font-size: 13px;
+    font-weight: 750;
+}
+
+QWidget#AvailablePlayerRow[selected="true"] QLabel#AvailableRank,
+QWidget#AvailablePlayerRow[selected="true"] QLabel#AvailableName {
+    color: #ffffff;
+}
+
+QFrame#CostOfPassingCard {
+    background-color: #151b25;
+    border: 1px solid #3b4a60;
+    border-radius: 13px;
+}
+
+QLabel#CostHeadline {
+    color: #f8fafc;
+    font-size: 19px;
+    font-weight: 950;
+    letter-spacing: .4px;
+    padding: 2px 0 4px 0;
+}
+
+QLabel#CostHeadline[state="take"] {
+    color: #4ade80;
+}
+
+QLabel#CostHeadline[state="pass"] {
+    color: #fbbf24;
+}
+
+QFrame#PathCard {
+    background-color: #101722;
+    border: 1px solid #334155;
+    border-radius: 10px;
+}
+
+QFrame#PathCard[pathType="take"] {
+    border-left: 5px solid #22c55e;
+}
+
+QFrame#PathCard[pathType="pass"] {
+    border-left: 5px solid #f59e0b;
+}
+
+QLabel#PathTitle {
+    color: #94a3b8;
+    font-size: 10px;
+    font-weight: 950;
+    letter-spacing: 1px;
+}
+
+QLabel#PathPlayer {
+    color: #f8fafc;
+    font-size: 14px;
+    font-weight: 850;
+}
+
+QLabel#PathArrow {
+    color: #64748b;
+    font-size: 15px;
+    font-weight: 900;
+}
+
+QLabel#TierRiskLabel {
+    background-color: #0f172a;
+    border-radius: 7px;
+    color: #fca5a5;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: .5px;
+    padding: 8px 10px;
+}
+"""
+
+# Ticket 055: true resizable war-room shell and custom player rows.
+DARK_STYLESHEET += """
+QSplitter#WarRoomSplitter::handle {
+    background-color: #202733;
+    border-radius: 3px;
+    margin: 4px 1px;
+}
+
+QSplitter#WarRoomSplitter::handle:hover {
+    background-color: #3b82f6;
+}
+
+QWidget#LeftPanel,
+QWidget#MiddlePanel,
+QWidget#RightPanel {
+    background-color: transparent;
+}
+
+QListWidget#AvailablePlayersList {
+    outline: 0;
+    padding: 3px;
+}
+
+QListWidget#AvailablePlayersList::item {
+    background-color: transparent;
+    border: 0;
+    margin: 1px 0;
+    padding: 0;
+}
+
+QListWidget#AvailablePlayersList::item:hover,
+QListWidget#AvailablePlayersList::item:selected {
+    background-color: transparent;
+    border: 0;
+}
+
+QWidget#AvailablePlayerRow {
+    background-color: #151a22;
+    border: 1px solid transparent;
+    border-radius: 8px;
+}
+
+QWidget#AvailablePlayerRow:hover {
+    background-color: #1b2431;
+    border-color: #334155;
+}
+
+QWidget#AvailablePlayerRow[selected="true"] {
+    background-color: #172554;
+    border: 2px solid #3b82f6;
+}
+
+QWidget#AvailablePlayerRow QLabel#AvailableRank {
+    color: #94a3b8;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+QWidget#AvailablePlayerRow QLabel#AvailableName {
+    color: #f8fafc;
+    font-size: 13px;
+    font-weight: 800;
+}
+
+QWidget#AvailablePlayerRow[selected="true"] QLabel#AvailableRank,
+QWidget#AvailablePlayerRow[selected="true"] QLabel#AvailableName {
+    color: #ffffff;
+}
+"""

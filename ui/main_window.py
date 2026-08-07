@@ -1,11 +1,11 @@
 import sys
 
-from PySide6.QtCore import QThread, Qt
+from PySide6.QtCore import QSize, QThread, Qt
 from PySide6.QtGui import QAction, QColor, QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QHBoxLayout, QHeaderView, QLabel,
     QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMessageBox,
-    QPushButton, QSpinBox, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QPushButton, QSpinBox, QSplitter, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from draft_session_store import DraftSessionStore
@@ -30,6 +30,65 @@ POSITION_FILTERS = (
     "DST",
     "K",
 )
+
+
+class AvailablePlayerRow(QWidget):
+    """Aligned visual row for the Available Players list."""
+
+    POSITION_COLORS = {
+        "QB": "#c084fc",
+        "RB": "#6ee7b7",
+        "WR": "#7dd3fc",
+        "TE": "#fdba74",
+        "DST": "#cbd5e1",
+        "K": "#fde047",
+    }
+
+    def __init__(self, player, is_my_guy: bool) -> None:
+        super().__init__()
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.setObjectName("AvailablePlayerRow")
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 5, 10, 5)
+        layout.setSpacing(8)
+
+        self.status_label = QLabel("●")
+        self.status_label.setFixedWidth(20)
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status_label.setStyleSheet(
+            f"color: {'#facc15' if is_my_guy else '#3b4657'}; "
+            "font-size: 16px; font-weight: 900;"
+        )
+
+        self.rank_label = QLabel(str(player.rank))
+        self.rank_label.setFixedWidth(34)
+        self.rank_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        self.rank_label.setObjectName("AvailableRank")
+
+        self.position_label = QLabel(player.position)
+        self.position_label.setFixedWidth(48)
+        self.position_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        base_position = player.position.upper().split("/")[0]
+        self.position_label.setStyleSheet(
+            f"color: {self.POSITION_COLORS.get(base_position, '#e2e8f0')}; "
+            "font-weight: 900;"
+        )
+
+        self.name_label = QLabel(player.name)
+        self.name_label.setObjectName("AvailableName")
+
+        layout.addWidget(self.status_label)
+        layout.addWidget(self.rank_label)
+        layout.addWidget(self.position_label)
+        layout.addWidget(self.name_label, 1)
+
+    def set_selected(self, selected: bool) -> None:
+        self.setProperty("selected", selected)
+        self.style().unpolish(self)
+        self.style().polish(self)
 
 
 class GridironWindow(QMainWindow):
@@ -105,46 +164,40 @@ class GridironWindow(QMainWindow):
         self.status_label = QLabel()
         self.status_label.hide()
 
-        self.content_layout = QHBoxLayout()
+        self.content_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.content_splitter.setObjectName("WarRoomSplitter")
+        self.content_splitter.setChildrenCollapsible(False)
+        self.content_splitter.setHandleWidth(8)
+        self.main_layout.addWidget(self.content_splitter, 1)
 
-        self.content_layout.setSpacing(
-            14
-        )
+        self.left_panel_widget = QWidget()
+        self.left_panel_widget.setObjectName("LeftPanel")
+        self.middle_panel_widget = QWidget()
+        self.middle_panel_widget.setObjectName("MiddlePanel")
+        self.right_panel_widget = QWidget()
+        self.right_panel_widget.setObjectName("RightPanel")
 
-        self.main_layout.addLayout(
-            self.content_layout
-        )
+        self.left_panel = QVBoxLayout(self.left_panel_widget)
+        self.middle_panel = QVBoxLayout(self.middle_panel_widget)
+        self.right_panel = QVBoxLayout(self.right_panel_widget)
 
-        self.left_panel = QVBoxLayout()
-        self.middle_panel = QVBoxLayout()
-        self.right_panel = QVBoxLayout()
+        for panel in (self.left_panel, self.middle_panel, self.right_panel):
+            panel.setContentsMargins(0, 0, 0, 0)
+            panel.setSpacing(8)
 
-        self.left_panel.setSpacing(
-            8
-        )
+        self.left_panel_widget.setMinimumWidth(245)
+        self.left_panel_widget.setMaximumWidth(330)
+        self.middle_panel_widget.setMinimumWidth(320)
+        self.middle_panel_widget.setMaximumWidth(470)
+        self.right_panel_widget.setMinimumWidth(560)
 
-        self.middle_panel.setSpacing(
-            8
-        )
-
-        self.right_panel.setSpacing(
-            8
-        )
-
-        self.content_layout.addLayout(
-            self.left_panel,
-            1,
-        )
-
-        self.content_layout.addLayout(
-            self.middle_panel,
-            2,
-        )
-
-        self.content_layout.addLayout(
-            self.right_panel,
-            2,
-        )
+        self.content_splitter.addWidget(self.left_panel_widget)
+        self.content_splitter.addWidget(self.middle_panel_widget)
+        self.content_splitter.addWidget(self.right_panel_widget)
+        self.content_splitter.setStretchFactor(0, 0)
+        self.content_splitter.setStretchFactor(1, 0)
+        self.content_splitter.setStretchFactor(2, 1)
+        self.content_splitter.setSizes([280, 390, 830])
 
         self.setup_left_panel()
         self.setup_middle_panel()
@@ -376,6 +429,7 @@ class GridironWindow(QMainWindow):
         self.search_input.setPlaceholderText(
             "Search player..."
         )
+        self.search_input.setMinimumHeight(40)
 
         self.search_input.textChanged.connect(
             self.refresh_available_players
@@ -405,18 +459,21 @@ class GridironWindow(QMainWindow):
         )
 
         self.available_list = QListWidget()
+        self.available_list.setObjectName("AvailablePlayersList")
 
         self.available_list.setSelectionMode(
             QListWidget.SelectionMode.ExtendedSelection
         )
 
         self.available_list.itemSelectionChanged.connect(
-            self.update_selected_players
+            self.handle_available_selection_changed
         )
 
         self.available_list.itemDoubleClicked.connect(
             self.record_double_clicked_player
         )
+
+        self.available_list.setSpacing(2)
 
         self.middle_panel.addWidget(
             self.available_list
@@ -469,7 +526,7 @@ class GridironWindow(QMainWindow):
         )
 
         legend = QLabel(
-            "★ My Guy   •   Double-click a player to record the pick"
+            "● My Guy   •   Double-click a player to record the pick"
         )
 
         self.middle_panel.addWidget(
@@ -791,46 +848,29 @@ class GridironWindow(QMainWindow):
                 in self.approved_players
             )
 
-            star = (
-                "★ "
-                if is_my_guy
-                else ""
-            )
-
-            item = QListWidgetItem(
-                (
-                    f"{star}"
-                    f"{player.rank:>3} | "
-                    f"{player.position:<4} | "
-                    f"{player.name}"
-                )
-            )
-
+            item = QListWidgetItem()
             item.setData(
                 Qt.ItemDataRole.UserRole,
                 player.name,
             )
+            item.setSizeHint(QSize(0, 46))
 
-            position_colors = {
-                "QB": "#c084fc",
-                "RB": "#6ee7b7",
-                "WR": "#7dd3fc",
-                "TE": "#fdba74",
-                "DST": "#cbd5e1",
-                "K": "#fde047",
-            }
             base_position = player.position.upper().split("/")[0]
-            item.setForeground(QColor(position_colors.get(base_position, "#e2e8f0")))
-
-            tooltip = f"{base_position} • {player.team} • FantasyPros Rank {player.rank}"
+            tooltip = (
+                f"{base_position} • {player.team} • "
+                f"FantasyPros Rank {player.rank}"
+            )
             if is_my_guy:
                 tooltip += " • My Guy"
-                item.setBackground(QColor("#203428"))
             item.setToolTip(tooltip)
 
-            self.available_list.addItem(
-                item
+            row_widget = AvailablePlayerRow(
+                player=player,
+                is_my_guy=is_my_guy,
             )
+
+            self.available_list.addItem(item)
+            self.available_list.setItemWidget(item, row_widget)
 
     def refresh_roster(self) -> None:
         self.roster_list.clear()
@@ -893,6 +933,17 @@ class GridironWindow(QMainWindow):
                 f"K {team.count_position('K')}"
             )
         )
+
+    def handle_available_selection_changed(self) -> None:
+        self._refresh_available_row_styles()
+        self.update_selected_players()
+
+    def _refresh_available_row_styles(self) -> None:
+        for index in range(self.available_list.count()):
+            item = self.available_list.item(index)
+            row_widget = self.available_list.itemWidget(item)
+            if isinstance(row_widget, AvailablePlayerRow):
+                row_widget.set_selected(item.isSelected())
 
     def update_selected_players(self) -> None:
         selected_count = len(

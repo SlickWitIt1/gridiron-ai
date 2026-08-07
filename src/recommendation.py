@@ -28,6 +28,14 @@ class Recommendation:
 
     expected_value_lost: float
 
+    likely_take_next_player: str | None
+    likely_pass_current_player: str | None
+    likely_pass_next_player: str | None
+    take_path_projected_points: float
+    pass_path_projected_points: float
+    opportunity_cost: float
+    tier_disappearance_probability: float
+
     score_breakdown: RecommendationScore
 
     grade: str
