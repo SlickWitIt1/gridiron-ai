@@ -1443,8 +1443,12 @@ class GridironWindow(QMainWindow):
             return
 
         if self.draft_board_dialog is None:
-            self.draft_board_dialog = (
-                DraftBoardDialog(self)
+            self.draft_board_dialog = DraftBoardDialog(self)
+            self.draft_board_dialog.record_player_requested.connect(
+                self.record_player_name
+            )
+            self.draft_board_dialog.undo_requested.connect(
+                self.undo_last_pick
             )
 
         self.draft_board_dialog.refresh_board(

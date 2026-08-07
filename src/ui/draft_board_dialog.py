@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QDialog, QVBoxLayout
 
 from live_draft import LiveDraftSession
 from ui.draft_board_widget import DraftBoardWidget
+from ui.draft_room_controls import DraftRoomControls
 
 
 DRAFT_BOARD_STYLESHEET = r"""
@@ -265,6 +266,125 @@ QLabel#DraftRoomHoverIntel[active="true"] {
     font-weight: 850;
 }
 
+QFrame#DraftRoomControls {
+    background-color: #101725;
+    border: 1px solid #243248;
+    border-radius: 12px;
+}
+
+QLabel#DraftControlHeading,
+QLabel#DraftControlTurn,
+QLabel#DraftControlMiniHeading,
+QLabel#DraftControlSelected,
+QLabel#DraftControlHint {
+    background: transparent;
+    border: 0;
+}
+
+QLabel#DraftControlHeading {
+    color: #f8fafc;
+    font-size: 12px;
+    font-weight: 950;
+    letter-spacing: .8px;
+}
+
+QLabel#DraftControlTurn {
+    color: #94a3b8;
+    font-size: 10px;
+    font-weight: 750;
+}
+
+QLabel#DraftControlMiniHeading {
+    color: #64748b;
+    font-size: 9px;
+    font-weight: 950;
+    letter-spacing: .8px;
+}
+
+QLabel#DraftControlSelected {
+    color: #e2e8f0;
+    font-size: 11px;
+    font-weight: 850;
+}
+
+QLabel#DraftControlHint {
+    color: #64748b;
+    font-size: 9px;
+}
+
+QLineEdit#DraftControlSearch,
+QComboBox#DraftControlPosition {
+    background-color: #182235;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    color: #e2e8f0;
+    padding: 6px 9px;
+    min-height: 24px;
+}
+
+QLineEdit#DraftControlSearch:focus,
+QComboBox#DraftControlPosition:focus {
+    border-color: #3b82f6;
+}
+
+QListWidget#DraftControlPlayerList {
+    background-color: #0d1421;
+    border: 1px solid #243248;
+    border-radius: 9px;
+    color: #e2e8f0;
+    padding: 4px;
+    font-family: monospace;
+    font-size: 11px;
+}
+
+QListWidget#DraftControlPlayerList::item {
+    min-height: 24px;
+    padding: 2px 7px;
+    border-radius: 6px;
+}
+
+QListWidget#DraftControlPlayerList::item:selected {
+    background-color: #173a67;
+    color: #ffffff;
+}
+
+QListWidget#DraftControlPlayerList::item:hover:!selected {
+    background-color: #172033;
+}
+
+QPushButton#DraftControlPrimaryButton {
+    background-color: #0f6fe8;
+    border: 1px solid #2f8cff;
+    border-radius: 8px;
+    color: white;
+    font-size: 10px;
+    font-weight: 950;
+}
+
+QPushButton#DraftControlPrimaryButton:hover {
+    background-color: #1880ff;
+}
+
+QPushButton#DraftControlSecondaryButton {
+    background-color: #26354a;
+    border: 1px solid #3b4d66;
+    border-radius: 8px;
+    color: #e2e8f0;
+    font-size: 10px;
+    font-weight: 900;
+}
+
+QPushButton#DraftControlSecondaryButton:hover {
+    background-color: #31435d;
+}
+
+QPushButton#DraftControlPrimaryButton:disabled,
+QPushButton#DraftControlSecondaryButton:disabled {
+    background-color: #1b2534;
+    border-color: #273548;
+    color: #64748b;
+}
+
 QScrollBar:vertical,
 QScrollBar:horizontal {
     background-color: #101725;
@@ -293,7 +413,10 @@ QScrollBar::sub-line {
 
 
 class DraftBoardDialog(QDialog):
-    """Modern card-based draft room while preserving the existing dialog API."""
+    """Modern card-based draft room with integrated live pick entry."""
+
+    record_player_requested = Signal(str)
+    undo_requested = Signal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -309,7 +432,12 @@ class DraftBoardDialog(QDialog):
         layout.setSpacing(0)
 
         self.board = DraftBoardWidget(self)
-        layout.addWidget(self.board)
+        layout.addWidget(self.board, 1)
+
+        self.controls = DraftRoomControls(self)
+        self.controls.record_requested.connect(self.record_player_requested.emit)
+        self.controls.undo_requested.connect(self.undo_requested.emit)
+        layout.addWidget(self.controls, 0)
 
     def refresh_board(
         self,
@@ -317,3 +445,4 @@ class DraftBoardDialog(QDialog):
         approved_players: set[str],
     ) -> None:
         self.board.refresh_board(session, approved_players)
+        self.controls.refresh(session, approved_players)
