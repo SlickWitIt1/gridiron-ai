@@ -114,6 +114,10 @@ INSIGHTS = {
         "Plain-language recommendation based primarily on the player's chance to survive "
         "until your next pick."
     ),
+    "AI COACH": (
+        "Tracks your last decision against the prior recommendation, then adapts the next "
+        "coaching message to the updated strategy, forecast, tiers, and roster path."
+    ),
     "DRAFT FORECAST": (
         "Projects positional selections, likely runs, player survival, and tier survival "
         "between the current pick and your next turn using seeded draft simulations."
@@ -288,6 +292,60 @@ class CommandCenterWidget(QWidget):
         self.insight_hint_label.setWordWrap(True)
         insight_layout.addWidget(self.insight_hint_label)
         layout.addWidget(self.insight_panel)
+
+        coach_heading = QLabel("ADAPTIVE AI COACH")
+        coach_heading.setObjectName("SubsectionHeading")
+        self._register_insight(coach_heading, "AI COACH")
+        layout.addWidget(coach_heading)
+
+        self.coach_card = QFrame()
+        self.coach_card.setObjectName("AdaptiveCoachCard")
+        self.coach_card.setProperty("severity", "info")
+        self._register_insight(self.coach_card, "AI COACH")
+        self.coach_card.setStyleSheet(
+            "QFrame#AdaptiveCoachCard { background-color: #111827; "
+            "border: 1px solid #334155; border-left: 4px solid #60a5fa; "
+            "border-radius: 12px; }"
+            "QFrame#AdaptiveCoachCard[severity=positive] { border-left-color: #4ade80; }"
+            "QFrame#AdaptiveCoachCard[severity=warning] { border-left-color: #fb923c; }"
+            "QLabel#CoachStatus { color: #93c5fd; font-size: 9px; font-weight: 950; "
+            "letter-spacing: 1px; }"
+            "QLabel#CoachTitle { color: #f8fafc; font-size: 15px; font-weight: 950; }"
+            "QLabel#CoachSummary { color: #e2e8f0; font-size: 13px; font-weight: 850; }"
+            "QLabel#CoachBody { color: #cbd5e1; font-size: 12px; }"
+            "QLabel#CoachAction { color: #facc15; font-size: 11px; font-weight: 950; }"
+        )
+        coach_layout = QVBoxLayout(self.coach_card)
+        coach_layout.setContentsMargins(14, 12, 14, 12)
+        coach_layout.setSpacing(5)
+
+        coach_top = QHBoxLayout()
+        self.coach_title_label = QLabel("AI COACH")
+        self.coach_title_label.setObjectName("CoachTitle")
+        self.coach_status_label = QLabel("READY")
+        self.coach_status_label.setObjectName("CoachStatus")
+        self.coach_status_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        coach_top.addWidget(self.coach_title_label, 1)
+        coach_top.addWidget(self.coach_status_label)
+        coach_layout.addLayout(coach_top)
+
+        self.coach_summary_label = QLabel("Analyze a decision to activate live coaching.")
+        self.coach_summary_label.setObjectName("CoachSummary")
+        self.coach_summary_label.setWordWrap(True)
+        coach_layout.addWidget(self.coach_summary_label)
+
+        self.coach_body_label = QLabel(
+            "The coach will remember your prior recommendation and review what happens next."
+        )
+        self.coach_body_label.setObjectName("CoachBody")
+        self.coach_body_label.setWordWrap(True)
+        coach_layout.addWidget(self.coach_body_label)
+
+        self.coach_action_label = QLabel("")
+        self.coach_action_label.setObjectName("CoachAction")
+        self.coach_action_label.setWordWrap(True)
+        coach_layout.addWidget(self.coach_action_label)
+        layout.addWidget(self.coach_card)
 
         strategy_heading = QLabel("CURRENT BUILD")
         strategy_heading.setObjectName("SubsectionHeading")
@@ -693,6 +751,7 @@ class CommandCenterWidget(QWidget):
         self.strategy_secondary_label.setText("Secondary: —")
         self.strategy_priority_label.setText("Next: Best Value")
         self.forecast_widget.reset()
+        self._reset_coach_card()
         self.wait_risk_card.value_label.setText("No analysis yet")
         self.roster_fit_card.value_label.setText("No analysis yet")
         self.tier_drop_card.value_label.setText("No analysis yet")
@@ -717,6 +776,71 @@ class CommandCenterWidget(QWidget):
         )
         self.table.setSortingEnabled(False)
         self.table.setRowCount(0)
+
+    def _reset_coach_card(self) -> None:
+        self.coach_card.setProperty("severity", "info")
+        self.coach_card.style().unpolish(self.coach_card)
+        self.coach_card.style().polish(self.coach_card)
+        self.coach_status_label.setText("READY")
+        self.coach_title_label.setText("AI COACH")
+        self.coach_summary_label.setText(
+            "Analyze a decision to activate live coaching."
+        )
+        self.coach_body_label.setText(
+            "The coach will remember your prior recommendation and review what happens next."
+        )
+        self.coach_action_label.setText("")
+
+    def set_coach_pending_selection(
+        self,
+        selected_player_name: str,
+        recommended_player: str | None = None,
+    ) -> None:
+        self.coach_card.setProperty("severity", "info")
+        self.coach_card.style().unpolish(self.coach_card)
+        self.coach_card.style().polish(self.coach_card)
+        self.coach_status_label.setText("PENDING REVIEW")
+        self.coach_title_label.setText("PICK RECORDED")
+        if recommended_player:
+            self.coach_summary_label.setText(
+                f"You selected {selected_player_name}. The prior recommendation was {recommended_player}."
+            )
+        else:
+            self.coach_summary_label.setText(
+                f"You selected {selected_player_name}."
+            )
+        self.coach_body_label.setText(
+            "The coach will compare this decision with the updated strategy and forecast "
+            "the next time you run an analysis."
+        )
+        self.coach_action_label.setText("Review queued for your next decision.")
+
+    def set_coach_message(self, message) -> None:
+        if message is None:
+            self._reset_coach_card()
+            return
+
+        severity = str(getattr(getattr(message, "severity", None), "value", "Info")).lower()
+        if severity not in {"positive", "warning"}:
+            severity = "info"
+        self.coach_card.setProperty("severity", severity)
+        self.coach_card.style().unpolish(self.coach_card)
+        self.coach_card.style().polish(self.coach_card)
+
+        message_type = str(
+            getattr(getattr(message, "message_type", None), "value", "Draft Update")
+        ).upper()
+        self.coach_status_label.setText(message_type)
+        self.coach_title_label.setText(str(getattr(message, "title", "AI COACH")))
+        self.coach_summary_label.setText(str(getattr(message, "summary", "")))
+
+        bullets = tuple(getattr(message, "bullets", ()))
+        self.coach_body_label.setText(
+            "\n".join(f"• {bullet}" for bullet in bullets)
+            if bullets
+            else "The board has been updated."
+        )
+        self.coach_action_label.setText(str(getattr(message, "action", "") or ""))
 
     def set_running(self, simulations: int, player_count: int) -> None:
         self.status_label.setText(

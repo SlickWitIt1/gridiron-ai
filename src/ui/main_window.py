@@ -72,6 +72,12 @@ class GridironWindow(QMainWindow):
 
         self.current_recommendations = []
 
+        # Adaptive Coach memory. These snapshots survive the picks between
+        # user turns so the next analysis can review the decision that was made.
+        self.coach_pending_selected_player: str | None = None
+        self.coach_previous_recommendation = None
+        self.coach_previous_forecast = None
+
         self.draft_board_dialog: (
             DraftBoardDialog | None
         ) = None
@@ -558,6 +564,9 @@ class GridironWindow(QMainWindow):
     def show_start_screen(self) -> None:
         self.session = None
         self.current_recommendations = []
+        self.coach_pending_selected_player = None
+        self.coach_previous_recommendation = None
+        self.coach_previous_forecast = None
 
         self.status_label.setText(
             "Start a new draft or resume a saved session."
@@ -1030,6 +1039,16 @@ class GridironWindow(QMainWindow):
             self.session.current_team_number
         )
 
+        is_user_pick = (
+            team_number == self.session.user_team_number
+        )
+        previous_recommendation = (
+            self.current_recommendations[0]
+            if self.current_recommendations
+            else None
+        )
+        previous_forecast = self.command_center.current_forecast
+
         choice = QMessageBox.question(
             self,
             "Record draft pick?",
@@ -1062,8 +1081,24 @@ class GridironWindow(QMainWindow):
 
             return
 
+        if is_user_pick:
+            self.coach_pending_selected_player = draft_pick.player.name
+            self.coach_previous_recommendation = previous_recommendation
+            self.coach_previous_forecast = previous_forecast
+
         self.save_active_session()
         self.clear_recommendations()
+
+        if is_user_pick:
+            self.command_center.set_coach_pending_selection(
+                selected_player_name=draft_pick.player.name,
+                recommended_player=(
+                    previous_recommendation.player_name
+                    if previous_recommendation is not None
+                    else None
+                ),
+            )
+
         self.refresh_draft_view()
 
         self.statusBar().showMessage(
@@ -1190,6 +1225,9 @@ class GridironWindow(QMainWindow):
             draft_picks=(
                 self.session.draft_results
             ),
+            previous_recommendation=self.coach_previous_recommendation,
+            previous_forecast=self.coach_previous_forecast,
+            selected_player_name=self.coach_pending_selected_player,
         )
 
         self.recommendation_worker.moveToThread(
@@ -1226,6 +1264,7 @@ class GridironWindow(QMainWindow):
         self,
         recommendations,
         forecast,
+        coach_message,
         runtime: float,
     ) -> None:
         self.current_recommendations = list(
@@ -1237,6 +1276,12 @@ class GridironWindow(QMainWindow):
             forecast=forecast,
             runtime=runtime,
         )
+        self.command_center.set_coach_message(coach_message)
+
+        # A pending pick review is consumed only after a successful analysis.
+        self.coach_pending_selected_player = None
+        self.coach_previous_recommendation = None
+        self.coach_previous_forecast = None
 
         self.statusBar().showMessage(
             (

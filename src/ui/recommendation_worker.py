@@ -2,6 +2,7 @@ from time import perf_counter
 
 from PySide6.QtCore import QObject, Signal
 
+from coach_engine import CoachEngine
 from forecast_engine import ForecastEngine
 from preferences import normalize_name
 from projection_loader import load_projections
@@ -11,7 +12,7 @@ from wait_analyzer import WaitAnalyzer
 
 
 class RecommendationWorker(QObject):
-    finished = Signal(object, object, float)
+    finished = Signal(object, object, object, float)
     failed = Signal(str)
 
     def __init__(
@@ -24,6 +25,9 @@ class RecommendationWorker(QObject):
         simulations: int,
         user_team,
         draft_picks=(),
+        previous_recommendation=None,
+        previous_forecast=None,
+        selected_player_name: str | None = None,
     ) -> None:
         super().__init__()
 
@@ -35,6 +39,9 @@ class RecommendationWorker(QObject):
         self.simulations = simulations
         self.user_team = user_team
         self.draft_picks = tuple(draft_picks)
+        self.previous_recommendation = previous_recommendation
+        self.previous_forecast = previous_forecast
+        self.selected_player_name = selected_player_name
 
     def run(self) -> None:
         try:
@@ -94,11 +101,28 @@ class RecommendationWorker(QObject):
                 player_names=self.candidate_names,
             )
 
+            if self.selected_player_name:
+                coach_message = CoachEngine.selection_message(
+                    selected_player_name=self.selected_player_name,
+                    previous_recommendation=self.previous_recommendation,
+                    previous_strategy=self.previous_recommendation,
+                    current_strategy=strategy_result,
+                    previous_forecast=self.previous_forecast,
+                    current_forecast=forecast,
+                )
+            else:
+                coach_message = CoachEngine.recommendation_message(
+                    recommendations=recommendations,
+                    forecast=forecast,
+                    strategy_result=strategy_result,
+                )
+
             runtime = perf_counter() - start_time
 
             self.finished.emit(
                 recommendations,
                 forecast,
+                coach_message,
                 runtime,
             )
 
