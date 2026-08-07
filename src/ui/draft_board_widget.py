@@ -28,6 +28,8 @@ class DraftBoardWidget(QWidget):
         self._team_headers: dict[int, QFrame] = {}
         self._user_team_number: int | None = None
         self._projections = load_projections()
+        self._rendered_picks: dict[int, str] = {}
+        self._current_pick_overall: int | None = None
 
         self._build_ui()
 
@@ -210,19 +212,20 @@ class DraftBoardWidget(QWidget):
         session: LiveDraftSession | None,
         approved_players: set[str],
     ) -> None:
-        for card in self._cards.values():
-            card.show_empty()
-            card.set_current_pick(False)
-            card.set_user_team(False)
+        """Refresh only cards whose state changed.
 
-        for header in self._team_headers.values():
-            header.setProperty("userTeam", "false")
-            self._refresh_widget(header)
-
-        self._user_team_number = None
+        The previous implementation emptied and repainted all 160 cards for
+        every pick, which caused the visible blink and expensive Qt restyling.
+        """
         self._reset_hover_intel()
 
         if session is None:
+            for overall, card in self._cards.items():
+                if overall in self._rendered_picks:
+                    card.show_empty()
+                card.set_current_pick(False)
+            self._rendered_picks.clear()
+            self._current_pick_overall = None
             self.summary_label.setText("No active draft.")
             self.progress_bar.setValue(0)
             self.on_clock_label.setText("WAITING FOR DRAFT")
@@ -230,9 +233,27 @@ class DraftBoardWidget(QWidget):
             self._refresh_widget(self.on_clock_label)
             return
 
-        self._user_team_number = session.user_team_number
-        completed = len(session.draft_results)
+        # Team-column styling changes only when the user's slot changes.
+        if self._user_team_number != session.user_team_number:
+            self._user_team_number = session.user_team_number
+            for team_number, header in self._team_headers.items():
+                is_user = team_number == session.user_team_number
+                header.setProperty("userTeam", "true" if is_user else "false")
+                self._refresh_widget(header)
+                name = header.findChild(QLabel, "DraftTeamName")
+                if name is not None:
+                    name.setText("YOU" if is_user else f"TEAM {team_number}")
 
+            # The user-team border is static for every card in that column; set
+            # it once rather than on every pick.
+            for overall_pick, team_number in enumerate(
+                session.league.draft_order, start=1
+            ):
+                self._cards[overall_pick].set_user_team(
+                    team_number == session.user_team_number
+                )
+
+        completed = len(session.draft_results)
         self.summary_label.setText(
             f"10-team • 16 rounds • {completed}/160 picks complete • "
             f"Your slot: {session.user_team_number}"
@@ -244,49 +265,55 @@ class DraftBoardWidget(QWidget):
             self.on_clock_label.setText("DRAFT COMPLETE")
             self.on_clock_label.setProperty("userTurn", "false")
         elif current_team == session.user_team_number:
-            self.on_clock_label.setText(f"● YOU'RE ON THE CLOCK • PICK {session.current_pick}")
+            self.on_clock_label.setText(
+                f"● YOU'RE ON THE CLOCK • PICK {session.current_pick}"
+            )
             self.on_clock_label.setProperty("userTurn", "true")
         else:
-            self.on_clock_label.setText(f"TEAM {current_team} ON CLOCK • PICK {session.current_pick}")
+            self.on_clock_label.setText(
+                f"TEAM {current_team} ON CLOCK • PICK {session.current_pick}"
+            )
             self.on_clock_label.setProperty("userTurn", "false")
         self._refresh_widget(self.on_clock_label)
 
-        for team_number, header in self._team_headers.items():
-            is_user = team_number == session.user_team_number
-            header.setProperty("userTeam", "true" if is_user else "false")
-            self._refresh_widget(header)
-
-            name = header.findChild(QLabel, "DraftTeamName")
-            if name is not None:
-                name.setText("YOU" if is_user else f"TEAM {team_number}")
-
-        picks_by_overall = {
+        new_picks = {
             draft_pick.overall: draft_pick
             for draft_pick in session.draft_results
         }
+        new_rendered = {
+            overall: draft_pick.player.name
+            for overall, draft_pick in new_picks.items()
+        }
 
-        for overall_pick, team_number in enumerate(
-            session.league.draft_order,
-            start=1,
-        ):
-            card = self._cards[overall_pick]
-            card.set_user_team(team_number == session.user_team_number)
+        # Handle new/changed drafted cards. In normal operation this is exactly
+        # one card.
+        for overall, draft_pick in new_picks.items():
+            if self._rendered_picks.get(overall) == draft_pick.player.name:
+                continue
+            projection = self._projections.get(
+                normalize_name(draft_pick.player.name)
+            )
+            self._cards[overall].show_player(
+                draft_pick, approved_players, projection=projection
+            )
 
-            draft_pick = picks_by_overall.get(overall_pick)
-            if draft_pick is not None:
-                projection = self._projections.get(
-                    normalize_name(draft_pick.player.name)
-                )
-                card.show_player(
-                    draft_pick,
-                    approved_players,
-                    projection=projection,
-                )
+        # Handle undo(s): only cards that used to contain a player become empty.
+        for overall in set(self._rendered_picks) - set(new_rendered):
+            self._cards[overall].show_empty()
 
-            if overall_pick == session.current_pick and not session.is_complete:
-                card.set_current_pick(True)
+        self._rendered_picks = new_rendered
 
-        self._scroll_to_current_pick(session.current_pick)
+        # Move the ON CLOCK state between at most two cards.
+        next_current = None if session.is_complete else session.current_pick
+        if self._current_pick_overall != next_current:
+            if self._current_pick_overall in self._cards:
+                self._cards[self._current_pick_overall].set_current_pick(False)
+            if next_current in self._cards:
+                self._cards[next_current].set_current_pick(True)
+            self._current_pick_overall = next_current
+
+        if next_current is not None:
+            self._scroll_to_current_pick(next_current)
 
     def _show_hover_intel(self, payload: dict[str, object]) -> None:
         name = payload.get("name") or "Player"

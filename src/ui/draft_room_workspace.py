@@ -75,6 +75,8 @@ class DraftRoomPlayerBrowser(QFrame):
         self._projections = load_projections()
         self._active_position = "ALL"
         self._filter_buttons: dict[str, QPushButton] = {}
+        self._known_available_names: set[str] = set()
+        self._headshot_icon_cache: dict[str, QIcon] = {}
 
         self._analysis_timer = QTimer(self)
         self._analysis_timer.setSingleShot(True)
@@ -181,6 +183,9 @@ class DraftRoomPlayerBrowser(QFrame):
 
         if session is None:
             self.context_label.setText("No active draft.")
+            self._known_available_names.clear()
+            self.refresh_table()
+            return
         elif session.is_complete:
             self.context_label.setText("Draft complete.")
         elif session.is_user_turn:
@@ -194,11 +199,68 @@ class DraftRoomPlayerBrowser(QFrame):
                 "Double-click the player they drafted."
             )
 
-        self.undo_button.setEnabled(
-            session is not None and bool(session.draft_results)
-        )
+        self.undo_button.setEnabled(bool(session.draft_results))
         self._refresh_position_tabs()
+
+        new_names = {player.name for player in session.available_players()}
+        removed = self._known_available_names - new_names
+        added = new_names - self._known_available_names
+
+        if self._known_available_names and len(removed) == 1 and not added:
+            self._remove_player_row(next(iter(removed)))
+            self._known_available_names = new_names
+            self._update_action_state()
+            return
+
+        if self._known_available_names and len(added) == 1 and not removed:
+            self._insert_player_if_visible(next(iter(added)))
+            self._known_available_names = new_names
+            self._update_action_state()
+            return
+
         self.refresh_table()
+
+    def _remove_player_row(self, player_name: str) -> None:
+        self.table.blockSignals(True)
+        try:
+            for row in range(self.table.rowCount()):
+                item = self.table.item(row, 1)
+                if item is not None and item.data(Qt.ItemDataRole.UserRole) == player_name:
+                    self.table.removeRow(row)
+                    break
+        finally:
+            self.table.blockSignals(False)
+
+    def _player_matches_current_view(self, player) -> bool:
+        position = base_position(player.position).upper()
+        wanted = self._active_position
+        if wanted == "FLEX" and position not in {"RB", "WR", "TE"}:
+            return False
+        if wanted not in {"ALL", "FLEX"} and position != wanted:
+            return False
+        query = normalize_name(self.search.text())
+        return not query or query in normalize_name(player.name)
+
+    def _insert_player_if_visible(self, player_name: str) -> None:
+        if self._session is None:
+            return
+        player = self._session.player_for_name(player_name)
+        if player is None or not self._player_matches_current_view(player):
+            return
+
+        visible_before = 0
+        for candidate in self._session.available_players():
+            if candidate.name == player.name:
+                break
+            if self._player_matches_current_view(candidate):
+                visible_before += 1
+
+        self.table.blockSignals(True)
+        try:
+            self.table.insertRow(visible_before)
+            self._populate_player_row(visible_before, player)
+        finally:
+            self.table.blockSignals(False)
 
     def _set_position_filter(self, position_key: str) -> None:
         self._active_position = position_key
@@ -405,131 +467,92 @@ class DraftRoomPlayerBrowser(QFrame):
                 names.append(str(value))
         return tuple(names)
 
+    def _headshot_icon(self, player_name: str) -> QIcon | None:
+        cached = self._headshot_icon_cache.get(player_name)
+        if cached is not None:
+            return cached
+        path = DEFAULT_ASSET_MANAGER.headshot(player_name)
+        if path is None:
+            return None
+        pixmap = QPixmap(str(path))
+        if pixmap.isNull():
+            return None
+        scaled = pixmap.scaled(
+            30, 30,
+            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        icon = QIcon(scaled)
+        self._headshot_icon_cache[player_name] = icon
+        return icon
+
+    def _populate_player_row(self, row: int, player) -> None:
+        position = base_position(player.position).upper()
+        projection = self._projections.get(normalize_name(player.name))
+        stats = projection.stats if projection is not None else {}
+        projected_points = projection.fantasy_points if projection is not None else None
+        schema = self._column_schema()
+        self.table.setRowHeight(row, 40)
+
+        for column, (_title, key) in enumerate(schema):
+            if key == "player":
+                my_guy = normalize_name(player.name) in self._approved_players
+                text = (
+                    f"{short_player_name(player.name)}{'   ★' if my_guy else ''}\n"
+                    f"{player.position}  •  {player.team}"
+                )
+                item = QTableWidgetItem(text)
+                item.setForeground(QColor("#fde047" if my_guy else "#f8fafc"))
+                icon = self._headshot_icon(player.name)
+                if icon is not None:
+                    item.setIcon(icon)
+            elif key == "rank":
+                item = QTableWidgetItem(str(getattr(player, "rank", "") or "—"))
+            elif key == "adp":
+                adp = getattr(player, "adp", None)
+                item = QTableWidgetItem(f"{float(adp):.1f}" if isinstance(adp, (int, float)) else "—")
+            elif key == "bye":
+                item = QTableWidgetItem(str(getattr(player, "bye", "") or "—"))
+            elif key == "projection":
+                item = QTableWidgetItem(f"{projected_points:.1f}" if isinstance(projected_points, (int, float)) else "—")
+            elif key == "tier":
+                item = QTableWidgetItem(str(getattr(player, "tier", "") or "—"))
+            elif key == "position":
+                item = QTableWidgetItem(f"{player.position}  {player.team}")
+                item.setForeground(QColor(POSITION_COLORS.get(position, "#e2e8f0")))
+            else:
+                item = QTableWidgetItem(self._format_stat(stats.get(key)))
+                if key.endswith("touchdowns") or key == "touchdowns":
+                    item.setForeground(QColor("#facc15"))
+
+            item.setData(Qt.ItemDataRole.UserRole, player.name)
+            if key != "player":
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.table.setItem(row, column, item)
+
     def refresh_table(self) -> None:
         previously_selected = set(self.selected_player_names())
-
         self.table.setUpdatesEnabled(False)
         self.table.blockSignals(True)
         self.table.setRowCount(0)
 
         try:
             if self._session is None:
+                self._known_available_names.clear()
                 return
 
-            query = normalize_name(self.search.text())
-            wanted_position = self._active_position
-            schema = self._column_schema()
-
             for player in self._session.available_players():
-                position = base_position(player.position).upper()
-
-                if wanted_position == "FLEX":
-                    if position not in {"RB", "WR", "TE"}:
-                        continue
-                elif wanted_position != "ALL" and position != wanted_position:
+                if not self._player_matches_current_view(player):
                     continue
-
-                if query and query not in normalize_name(player.name):
-                    continue
-
-                projection = self._projections.get(normalize_name(player.name))
-                stats = projection.stats if projection is not None else {}
-                projected_points = (
-                    projection.fantasy_points
-                    if projection is not None
-                    else None
-                )
-
                 row = self.table.rowCount()
                 self.table.insertRow(row)
-                self.table.setRowHeight(row, 40)
-
-                for column, (_title, key) in enumerate(schema):
-                    if key == "player":
-                        my_guy = normalize_name(player.name) in self._approved_players
-                        display_name = short_player_name(player.name)
-                        player_text = (
-                            f"{display_name}{'   ★' if my_guy else ''}\n"
-                            f"{player.position}  •  {player.team}"
-                        )
-                        item = QTableWidgetItem(player_text)
-                        item.setForeground(
-                            QColor("#fde047" if my_guy else "#f8fafc")
-                        )
-
-                        headshot_path = DEFAULT_ASSET_MANAGER.headshot(player.name)
-                        if headshot_path is not None:
-                            pixmap = QPixmap(str(headshot_path))
-                            if not pixmap.isNull():
-                                scaled = pixmap.scaled(
-                                    30,
-                                    30,
-                                    Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-                                    Qt.TransformationMode.SmoothTransformation,
-                                )
-                                item.setIcon(QIcon(scaled))
-
-                    elif key == "rank":
-                        item = QTableWidgetItem(
-                            str(getattr(player, "rank", "") or "—")
-                        )
-
-                    elif key == "adp":
-                        adp = getattr(player, "adp", None)
-                        text = (
-                            f"{float(adp):.1f}"
-                            if isinstance(adp, (int, float))
-                            else "—"
-                        )
-                        item = QTableWidgetItem(text)
-
-                    elif key == "bye":
-                        item = QTableWidgetItem(
-                            str(getattr(player, "bye", "") or "—")
-                        )
-
-                    elif key == "projection":
-                        item = QTableWidgetItem(
-                            f"{projected_points:.1f}"
-                            if isinstance(projected_points, (int, float))
-                            else "—"
-                        )
-
-                    elif key == "tier":
-                        item = QTableWidgetItem(
-                            str(getattr(player, "tier", "") or "—")
-                        )
-
-                    elif key == "position":
-                        item = QTableWidgetItem(
-                            f"{player.position}  {player.team}"
-                        )
-                        item.setForeground(
-                            QColor(POSITION_COLORS.get(position, "#e2e8f0"))
-                        )
-
-                    else:
-                        item = QTableWidgetItem(
-                            self._format_stat(stats.get(key))
-                        )
-
-                        # TD columns get a subtle emphasis because touchdowns are
-                        # one of the fastest useful comparisons on draft day.
-                        if key.endswith("touchdowns") or key == "touchdowns":
-                            item.setForeground(QColor("#facc15"))
-
-                    item.setData(Qt.ItemDataRole.UserRole, player.name)
-
-                    if key != "player":
-                        item.setTextAlignment(
-                            Qt.AlignmentFlag.AlignCenter
-                        )
-
-                    self.table.setItem(row, column, item)
-
+                self._populate_player_row(row, player)
                 if player.name in previously_selected:
                     self.table.selectRow(row)
 
+            self._known_available_names = {
+                player.name for player in self._session.available_players()
+            }
         finally:
             self.table.blockSignals(False)
             self.table.setUpdatesEnabled(True)

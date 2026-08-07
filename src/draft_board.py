@@ -28,6 +28,16 @@ class DraftBoard:
         self.available_names.remove(player.name)
         self.available_players.remove(player)
 
+
+    def restore_player(self, player: Player) -> None:
+        """Return a player to the available pool after an undo."""
+        if player.name in self.available_names:
+            return
+
+        self.available_names.add(player.name)
+        self.available_players.append(player)
+        self.available_players.sort(key=lambda item: item.rank)
+
     def is_available(self, player: Player) -> bool:
         return player.name in self.available_names
 

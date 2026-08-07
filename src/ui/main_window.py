@@ -1,6 +1,6 @@
 import sys
 
-from PySide6.QtCore import QSize, QThread, Qt
+from PySide6.QtCore import QSize, QThread, QTimer, Qt
 from PySide6.QtGui import (
     QAction, QColor, QFontDatabase, QIcon, QKeySequence, QPainter, QPixmap,
 )
@@ -71,6 +71,7 @@ class GridironWindow(QMainWindow):
         self.recommendation_worker: RecommendationWorker | None = None
 
         self.current_recommendations = []
+        self.pending_recommendation_candidates: tuple[str, ...] | None = None
 
         # Adaptive Coach memory. These snapshots survive the picks between
         # user turns so the next analysis can review the decision that was made.
@@ -564,6 +565,7 @@ class GridironWindow(QMainWindow):
     def show_start_screen(self) -> None:
         self.session = None
         self.current_recommendations = []
+        self.pending_recommendation_candidates = None
         self.coach_pending_selected_player = None
         self.coach_previous_recommendation = None
         self.coach_previous_forecast = None
@@ -794,7 +796,15 @@ class GridironWindow(QMainWindow):
 
         self.war_room_header.update_state(self.session)
         self.draft_pulse_widget.update_from_session(self.session)
-        self.refresh_available_players()
+        draft_room_visible = (
+            self.draft_board_dialog is not None
+            and self.draft_board_dialog.isVisible()
+        )
+
+        # When the Draft Room is active, rebuilding the hidden War Room player
+        # list duplicates hundreds of item operations for no visible benefit.
+        if not draft_room_visible:
+            self.refresh_available_players()
         self.refresh_roster()
         self.refresh_draft_board_dialog()
 
@@ -1118,29 +1128,17 @@ class GridironWindow(QMainWindow):
         ):
             return
 
-        completed_names = list(
-            self.session.completed_player_names
-        )
-
-        removed_player = (
-            completed_names.pop()
-        )
-
-        self.session = LiveDraftSession(
-            user_team_number=(
-                self.session.user_team_number
-            ),
-            completed_player_names=tuple(
-                completed_names
-            ),
-        )
+        try:
+            removed_pick = self.session.undo_last_pick()
+        except RuntimeError:
+            return
 
         self.save_active_session()
         self.clear_recommendations()
         self.refresh_draft_view()
 
         self.statusBar().showMessage(
-            f"Undid the selection of {removed_player}.",
+            f"Undid the selection of {removed_pick.player.name}.",
             6000,
         )
 
@@ -1192,8 +1190,10 @@ class GridironWindow(QMainWindow):
             self.recommendation_thread is not None
             and self.recommendation_thread.isRunning()
         ):
+            self.pending_recommendation_candidates = tuple(candidate_names)
             return
 
+        self.pending_recommendation_candidates = None
         self.simulations = self.simulations_selector.value()
 
         self.analyze_button.setEnabled(False)
@@ -1380,6 +1380,15 @@ class GridironWindow(QMainWindow):
 
         self.recommendation_worker = None
         self.recommendation_thread = None
+
+        pending = self.pending_recommendation_candidates
+        self.pending_recommendation_candidates = None
+
+        if pending:
+            QTimer.singleShot(
+                0,
+                lambda names=pending: self._start_recommendation_analysis(names),
+            )
 
     def show_selected_recommendation(
         self,

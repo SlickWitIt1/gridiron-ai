@@ -281,6 +281,27 @@ class LiveDraftSession:
 
         return draft_pick
 
+
+    def undo_last_pick(self) -> DraftPick:
+        """Undo one pick in place without rebuilding/replaying the full session."""
+        if not self.draft_results:
+            raise RuntimeError("There is no draft pick to undo.")
+
+        draft_pick = self.draft_results.pop()
+        player = draft_pick.player
+        team = self.league.teams[draft_pick.team_number - 1]
+
+        # record_pick() always appends to that team's roster, so the matching
+        # player can be removed directly while preserving draft order.
+        for index in range(len(team.players) - 1, -1, -1):
+            if team.players[index].name == player.name:
+                team.players.pop(index)
+                break
+
+        self.board.restore_player(player)
+        self.state.current_pick = self.current_pick
+        return draft_pick
+
     def available_players(
         self,
         limit: int | None = None,

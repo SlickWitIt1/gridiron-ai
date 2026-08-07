@@ -381,10 +381,16 @@ class DraftPickCard(QFrame):
         }
 
     def set_user_team(self, enabled: bool) -> None:
-        self.setProperty("userTeam", "true" if enabled else "false")
+        value = "true" if enabled else "false"
+        if self.property("userTeam") == value:
+            return
+        self.setProperty("userTeam", value)
         self._refresh_style()
 
     def set_current_pick(self, enabled: bool) -> None:
+        if self._is_current == enabled:
+            return
+
         self._is_current = enabled
         self.setProperty("currentPick", "true" if enabled else "false")
 
