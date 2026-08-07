@@ -1,5 +1,7 @@
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QColor
+from ui.forecast_widget import ForecastWidget
+
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -112,6 +114,10 @@ INSIGHTS = {
         "Plain-language recommendation based primarily on the player's chance to survive "
         "until your next pick."
     ),
+    "DRAFT FORECAST": (
+        "Projects positional selections, likely runs, player survival, and tier survival "
+        "between the current pick and your next turn using seeded draft simulations."
+    ),
 }
 
 
@@ -120,6 +126,7 @@ class CommandCenterWidget(QWidget):
         super().__init__()
 
         self.current_recommendations = []
+        self.current_forecast = None
         self.breakdown_rows = {}
         self.alternative_buttons: list[QPushButton] = []
         self._insight_targets: dict[object, str] = {}
@@ -331,6 +338,15 @@ class CommandCenterWidget(QWidget):
         strategy_layout.addWidget(self.strategy_secondary_label, 1, 0)
         strategy_layout.addWidget(self.strategy_priority_label, 1, 1)
         layout.addWidget(self.strategy_card)
+
+        forecast_heading = QLabel("DRAFT FORECAST")
+        forecast_heading.setObjectName("SubsectionHeading")
+        self._register_insight(forecast_heading, "DRAFT FORECAST")
+        layout.addWidget(forecast_heading)
+
+        self.forecast_widget = ForecastWidget()
+        self._register_insight(self.forecast_widget, "DRAFT FORECAST")
+        layout.addWidget(self.forecast_widget)
 
         cost_heading = QLabel("COST OF PASSING")
         cost_heading.setObjectName("SubsectionHeading")
@@ -646,6 +662,7 @@ class CommandCenterWidget(QWidget):
 
     def reset(self) -> None:
         self.current_recommendations = []
+        self.current_forecast = None
         self._insight_pinned_key = None
         self._set_live_insight(
             "READY FOR ANALYSIS",
@@ -675,6 +692,7 @@ class CommandCenterWidget(QWidget):
         self.strategy_confidence_label.setText("0% confidence")
         self.strategy_secondary_label.setText("Secondary: —")
         self.strategy_priority_label.setText("Next: Best Value")
+        self.forecast_widget.reset()
         self.wait_risk_card.value_label.setText("No analysis yet")
         self.roster_fit_card.value_label.setText("No analysis yet")
         self.tier_drop_card.value_label.setText("No analysis yet")
@@ -710,8 +728,10 @@ class CommandCenterWidget(QWidget):
         self.action_label.style().unpolish(self.action_label)
         self.action_label.style().polish(self.action_label)
 
-    def set_results(self, recommendations, runtime: float) -> None:
+    def set_results(self, recommendations, forecast, runtime: float) -> None:
         self.current_recommendations = list(recommendations)
+        self.current_forecast = forecast
+        self.forecast_widget.set_forecast(forecast)
         self.status_label.setText(
             f"Analysis completed in {runtime:.1f} seconds."
         )
@@ -860,6 +880,7 @@ class CommandCenterWidget(QWidget):
             f"{survival:.1%}" if survival is not None else "N/A"
         )
 
+        self.forecast_widget.set_recommendation(recommendation)
         self.player_name_label.setText(recommendation.player_name)
         tier_meta = (
             f"  •  TIER {recommendation.tier_number}"

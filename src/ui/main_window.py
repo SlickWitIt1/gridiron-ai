@@ -1187,7 +1187,9 @@ class GridironWindow(QMainWindow):
             user_team=(
                 self.session.state.user_team
             ),
-            draft_picks=tuple(self.session.draft_results),
+            draft_picks=(
+                self.session.draft_results
+            ),
         )
 
         self.recommendation_worker.moveToThread(
@@ -1223,6 +1225,7 @@ class GridironWindow(QMainWindow):
     def handle_recommendations(
         self,
         recommendations,
+        forecast,
         runtime: float,
     ) -> None:
         self.current_recommendations = list(
@@ -1231,6 +1234,7 @@ class GridironWindow(QMainWindow):
 
         self.command_center.set_results(
             recommendations=recommendations,
+            forecast=forecast,
             runtime=runtime,
         )
 

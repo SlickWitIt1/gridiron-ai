@@ -2,6 +2,7 @@ from time import perf_counter
 
 from PySide6.QtCore import QObject, Signal
 
+from forecast_engine import ForecastEngine
 from preferences import normalize_name
 from projection_loader import load_projections
 from recommendation_engine import RecommendationEngine
@@ -10,7 +11,7 @@ from wait_analyzer import WaitAnalyzer
 
 
 class RecommendationWorker(QObject):
-    finished = Signal(object, float)
+    finished = Signal(object, object, float)
     failed = Signal(str)
 
     def __init__(
@@ -80,10 +81,24 @@ class RecommendationWorker(QObject):
                 strategy_result=strategy_result,
             )
 
+            forecast = ForecastEngine(
+                players=wait_analyzer.players,
+                approved_players=wait_analyzer.approved_players,
+                projections=load_projections(),
+            ).forecast(
+                draft_slot=self.draft_slot,
+                completed_player_names=self.completed_player_names,
+                current_pick=self.current_pick,
+                next_user_pick=self.next_pick,
+                simulations=self.simulations,
+                player_names=self.candidate_names,
+            )
+
             runtime = perf_counter() - start_time
 
             self.finished.emit(
                 recommendations,
+                forecast,
                 runtime,
             )
 
