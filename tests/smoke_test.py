@@ -15,6 +15,9 @@ from loader import load_players
 from preferences import load_my_guys
 from project_paths import validate_data_files
 from projection_loader import load_projections
+from strategy import DraftStrategy
+from strategy_engine import StrategyEngine
+from team import Team
 from tier_engine import TierEngine
 
 
@@ -45,6 +48,16 @@ def main() -> None:
     check(
         "tier metadata",
         all(info.tier_number >= 1 for info in tiers.values()),
+    )
+
+    empty_strategy = StrategyEngine().analyze(Team(7))
+    check(
+        "strategy engine",
+        empty_strategy.primary_strategy == DraftStrategy.UNDETERMINED,
+    )
+    check(
+        "strategy compatibility alias",
+        empty_strategy.strategy == DraftStrategy.UNDETERMINED,
     )
 
     with tempfile.TemporaryDirectory() as temp_dir:
