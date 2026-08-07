@@ -1,4 +1,4 @@
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QFrame,
@@ -26,6 +26,95 @@ POSITION_COLORS = {
 }
 
 
+INSIGHTS = {
+    "DECISION SCORE": (
+        "The overall recommendation score out of 100. It combines projection, "
+        "wait risk, roster fit, scarcity, tier value, opportunity cost, strategy "
+        "fit, and My Guy preference."
+    ),
+    "RATING": (
+        "A letter grade derived from the Decision Score. It summarizes the "
+        "strength of this recommendation, not the player's real-life talent."
+    ),
+    "SURVIVES": (
+        "Estimated probability that this player remains available at your next pick."
+    ),
+    "CONFIDENCE": (
+        "How strongly the available evidence supports this recommendation. Higher "
+        "confidence means the score, wait signal, tier signal, and other factors "
+        "point more clearly in the same direction."
+    ),
+    "CURRENT BUILD": (
+        "The draft strategy detected from your actual picks, their rounds, and player "
+        "quality. The build can change as your draft develops."
+    ),
+    "STRATEGY CONFIDENCE": (
+        "How clearly the detected primary strategy leads the next-best strategy."
+    ),
+    "SECONDARY STRATEGY": (
+        "The second-most likely interpretation of your current draft structure."
+    ),
+    "NEXT PRIORITIES": (
+        "Suggested ways to continue the detected build. These are guidance, not rigid rules."
+    ),
+    "COST OF PASSING": (
+        "Compares two simulated roster paths: taking this player now versus passing "
+        "and drafting the most likely alternatives across your next two selections."
+    ),
+    "TAKE PATH": (
+        "The most common two-pick roster path when you draft this player now."
+    ),
+    "PASS PATH": (
+        "The most common two-pick roster path when you pass on this player now."
+    ),
+    "TIER DISAPPEARANCE": (
+        "Estimated probability that every currently available player in this player's "
+        "tier is gone by your next pick."
+    ),
+    "WAIT RISK": (
+        "Rewards players who are unlikely to survive until your next selection."
+    ),
+    "ROSTER NEED": (
+        "How well the player's position fills an open starter, FLEX, or depth need, "
+        "including penalties for redundant positions."
+    ),
+    "TIER STATUS": (
+        "Shows the player's projection-based tier, how many players remain in it, "
+        "and the projected drop to the next tier."
+    ),
+    "PROJECTION": (
+        "Value above the replacement-level projection for this position."
+    ),
+    "ROSTER FIT": (
+        "Score for positional need, starter/FLEX fit, depth, and roster redundancy."
+    ),
+    "SCARCITY": (
+        "How scarce comparable options are, using tier urgency and the positional drop-off."
+    ),
+    "TIER DROP": (
+        "Points awarded for the projected scoring cliff between this tier and the next tier."
+    ),
+    "OPPORTUNITY COST": (
+        "Score derived from how much better the simulated take-now roster path performs "
+        "than the simulated pass path."
+    ),
+    "STRATEGY FIT": (
+        "How well this candidate continues your detected draft build. Strong tier value "
+        "can still justify an exception."
+    ),
+    "MY GUY": (
+        "A small preference bonus when the player is on your My Guys list."
+    ),
+    "TOP ALTERNATIVES": (
+        "Other analyzed candidates, kept in the exact order produced by the recommendation engine."
+    ),
+    "ACTION": (
+        "Plain-language recommendation based primarily on the player's chance to survive "
+        "until your next pick."
+    ),
+}
+
+
 class CommandCenterWidget(QWidget):
     def __init__(self) -> None:
         super().__init__()
@@ -33,6 +122,14 @@ class CommandCenterWidget(QWidget):
         self.current_recommendations = []
         self.breakdown_rows = {}
         self.alternative_buttons: list[QPushButton] = []
+        self._insight_targets: dict[object, str] = {}
+        self._insight_pinned_key: str | None = None
+        self._insight_active_key = "DECISION SCORE"
+        self._live_insight_title = "READY FOR ANALYSIS"
+        self._live_insight_body = (
+            "Select players and run an analysis. The strongest recommendation "
+            "and its clearest reasons will appear here automatically."
+        )
         self._setup_ui()
         self.reset()
 
@@ -113,6 +210,7 @@ class CommandCenterWidget(QWidget):
 
         self.confidence_label = QLabel("CONFIDENCE —")
         self.confidence_label.setObjectName("ConfidenceLabel")
+        self._register_insight(self.confidence_label, "CONFIDENCE")
         hero_layout.addWidget(self.confidence_label)
 
         self.confidence_bar = QProgressBar()
@@ -120,12 +218,14 @@ class CommandCenterWidget(QWidget):
         self.confidence_bar.setTextVisible(False)
         self.confidence_bar.setObjectName("ConfidenceBar")
         self.confidence_bar.setMinimumHeight(22)
+        self._register_insight(self.confidence_bar, "CONFIDENCE")
         hero_layout.addWidget(self.confidence_bar)
 
         self.action_label = QLabel("ANALYZE PLAYERS")
         self.action_label.setObjectName("ActionBadge")
         self.action_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.action_label.setMinimumHeight(46)
+        self._register_insight(self.action_label, "ACTION")
         self.action_label.setStyleSheet(
             "font-size: 17px; font-weight: 900; border-radius: 10px;"
         )
@@ -133,12 +233,63 @@ class CommandCenterWidget(QWidget):
 
         layout.addWidget(self.hero_card)
 
+        # Keep the contextual insight directly below the recommendation so it
+        # remains visible while the user explores the most important metrics.
+        insight_heading = QLabel("AI DRAFT INSIGHT")
+        insight_heading.setObjectName("SubsectionHeading")
+        layout.addWidget(insight_heading)
+
+        self.insight_panel = QFrame()
+        self.insight_panel.setObjectName("GridironInsightPanel")
+        self.insight_panel.setStyleSheet(
+            "QFrame#GridironInsightPanel { background-color: #101722; "
+            "border: 1px solid #3b4a60; border-left: 4px solid #facc15; "
+            "border-radius: 12px; }"
+            "QLabel#GridironInsightMetric { color: #f8fafc; font-size: 14px; "
+            "font-weight: 950; }"
+            "QLabel#GridironInsightStatus { color: #4ade80; font-size: 9px; "
+            "font-weight: 950; letter-spacing: 1px; }"
+            "QLabel#GridironInsightBody { color: #cbd5e1; font-size: 12px; "
+            "line-height: 1.35; }"
+            "QLabel#GridironInsightHint { color: #64748b; font-size: 10px; }"
+        )
+        insight_layout = QVBoxLayout(self.insight_panel)
+        insight_layout.setContentsMargins(14, 12, 14, 12)
+        insight_layout.setSpacing(5)
+
+        insight_top_row = QHBoxLayout()
+        self.insight_metric_label = QLabel(self._live_insight_title)
+        self.insight_metric_label.setObjectName("GridironInsightMetric")
+        self.insight_status_label = QLabel("LIVE")
+        self.insight_status_label.setObjectName("GridironInsightStatus")
+        self.insight_status_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        insight_top_row.addWidget(self.insight_metric_label, 1)
+        insight_top_row.addWidget(self.insight_status_label)
+        insight_layout.addLayout(insight_top_row)
+
+        self.insight_body_label = QLabel(self._live_insight_body)
+        self.insight_body_label.setObjectName("GridironInsightBody")
+        self.insight_body_label.setWordWrap(True)
+        self.insight_body_label.setMinimumHeight(42)
+        self.insight_body_label.setMaximumHeight(120)
+        insight_layout.addWidget(self.insight_body_label)
+
+        self.insight_hint_label = QLabel(
+            "Hover for help • Click to pin • Click the pinned item again to return live"
+        )
+        self.insight_hint_label.setObjectName("GridironInsightHint")
+        self.insight_hint_label.setWordWrap(True)
+        insight_layout.addWidget(self.insight_hint_label)
+        layout.addWidget(self.insight_panel)
+
         strategy_heading = QLabel("CURRENT BUILD")
         strategy_heading.setObjectName("SubsectionHeading")
+        self._register_insight(strategy_heading, "CURRENT BUILD")
         layout.addWidget(strategy_heading)
 
         self.strategy_card = QFrame()
         self.strategy_card.setObjectName("InsightCard")
+        self._register_insight(self.strategy_card, "CURRENT BUILD")
         self.strategy_card.setStyleSheet(
             "QFrame#InsightCard {"
             "background-color: #151b25;"
@@ -152,21 +303,25 @@ class CommandCenterWidget(QWidget):
         strategy_layout.setVerticalSpacing(5)
 
         self.strategy_name_label = QLabel("Still learning")
+        self._register_insight(self.strategy_name_label, "CURRENT BUILD")
         self.strategy_name_label.setStyleSheet(
             "font-size: 19px; font-weight: 950; color: #f8fafc;"
         )
         self.strategy_confidence_label = QLabel("0% confidence")
         self.strategy_confidence_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self._register_insight(self.strategy_confidence_label, "STRATEGY CONFIDENCE")
         self.strategy_confidence_label.setStyleSheet(
             "font-size: 12px; font-weight: 900; color: #93c5fd;"
         )
         self.strategy_secondary_label = QLabel("Secondary: —")
+        self._register_insight(self.strategy_secondary_label, "SECONDARY STRATEGY")
         self.strategy_secondary_label.setStyleSheet(
             "font-size: 12px; color: #94a3b8;"
         )
         self.strategy_priority_label = QLabel("Next: Best Value")
         self.strategy_priority_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.strategy_priority_label.setWordWrap(True)
+        self._register_insight(self.strategy_priority_label, "NEXT PRIORITIES")
         self.strategy_priority_label.setStyleSheet(
             "font-size: 12px; font-weight: 800; color: #cbd5e1;"
         )
@@ -179,10 +334,12 @@ class CommandCenterWidget(QWidget):
 
         cost_heading = QLabel("COST OF PASSING")
         cost_heading.setObjectName("SubsectionHeading")
+        self._register_insight(cost_heading, "COST OF PASSING")
         layout.addWidget(cost_heading)
 
         self.cost_card = QFrame()
         self.cost_card.setObjectName("CostOfPassingCard")
+        self._register_insight(self.cost_card, "COST OF PASSING")
         cost_layout = QVBoxLayout(self.cost_card)
         cost_layout.setContentsMargins(16, 14, 16, 14)
         cost_layout.setSpacing(10)
@@ -190,19 +347,23 @@ class CommandCenterWidget(QWidget):
         self.cost_headline_label = QLabel("Run an analysis to compare roster paths.")
         self.cost_headline_label.setObjectName("CostHeadline")
         self.cost_headline_label.setWordWrap(True)
+        self._register_insight(self.cost_headline_label, "COST OF PASSING")
         cost_layout.addWidget(self.cost_headline_label)
 
         path_grid = QGridLayout()
         path_grid.setSpacing(10)
 
         self.take_path_frame = self._path_card("TAKE NOW", "—", "—", "take")
+        self._register_insight(self.take_path_frame, "TAKE PATH")
         self.pass_path_frame = self._path_card("PASS", "—", "—", "pass")
+        self._register_insight(self.pass_path_frame, "PASS PATH")
         path_grid.addWidget(self.take_path_frame, 0, 0)
         path_grid.addWidget(self.pass_path_frame, 0, 1)
         cost_layout.addLayout(path_grid)
 
         self.tier_risk_label = QLabel("Tier disappearance risk: —")
         self.tier_risk_label.setObjectName("TierRiskLabel")
+        self._register_insight(self.tier_risk_label, "TIER DISAPPEARANCE")
         cost_layout.addWidget(self.tier_risk_label)
 
         layout.addWidget(self.cost_card)
@@ -262,6 +423,8 @@ class CommandCenterWidget(QWidget):
 
             header_row = QHBoxLayout()
             name_label = QLabel(component_name.upper())
+            self._register_insight(component_row, component_name.upper())
+            self._register_insight(name_label, component_name.upper())
             name_label.setStyleSheet(
                 "font-size: 11px; font-weight: 900; color: #cbd5e1;"
             )
@@ -302,6 +465,7 @@ class CommandCenterWidget(QWidget):
 
         alternatives = QLabel("TOP ALTERNATIVES")
         alternatives.setObjectName("SubsectionHeading")
+        self._register_insight(alternatives, "TOP ALTERNATIVES")
         layout.addWidget(alternatives)
 
         self.alternatives_frame = QFrame()
@@ -350,16 +514,17 @@ class CommandCenterWidget(QWidget):
         self.reason_label.setWordWrap(True)
         self.reason_label.setMinimumHeight(108)
         layout.addWidget(self.reason_label)
+
         layout.addStretch()
 
         self.scroll_area.setWidget(content)
         outer_layout.addWidget(self.scroll_area)
 
-    @staticmethod
-    def _metric_title(text: str) -> QLabel:
+    def _metric_title(self, text: str) -> QLabel:
         label = QLabel(text)
         label.setObjectName("MetricTitle")
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._register_insight(label, text)
         return label
 
     @staticmethod
@@ -401,8 +566,7 @@ class CommandCenterWidget(QWidget):
         frame.second_player_label = second_label
         return frame
 
-    @staticmethod
-    def _small_card(title: str, value: str) -> QFrame:
+    def _small_card(self, title: str, value: str) -> QFrame:
         frame = QFrame()
         frame.setObjectName("InsightCard")
         card_layout = QVBoxLayout(frame)
@@ -410,7 +574,10 @@ class CommandCenterWidget(QWidget):
 
         title_label = QLabel(title)
         title_label.setObjectName("InsightTitle")
+        self._register_insight(frame, title)
+        self._register_insight(title_label, title)
         value_label = QLabel(value)
+        self._register_insight(value_label, title)
         value_label.setObjectName("InsightValue")
         value_label.setWordWrap(True)
 
@@ -420,8 +587,71 @@ class CommandCenterWidget(QWidget):
         frame.value_label = value_label
         return frame
 
+    def _register_insight(self, widget: QWidget, key: str) -> None:
+        """Connect one UI element to the fixed insight panel."""
+        if key not in INSIGHTS:
+            return
+        widget.setMouseTracking(True)
+        widget.installEventFilter(self)
+        self._insight_targets[widget] = key
+
+    def _render_insight(self, title: str, body: str, status: str) -> None:
+        self.insight_metric_label.setText(title)
+        self.insight_body_label.setText(body)
+        self.insight_status_label.setText(status)
+
+    def _set_live_insight(self, title: str, body: str) -> None:
+        self._live_insight_title = title
+        self._live_insight_body = body
+        if self._insight_pinned_key is None:
+            self._render_insight(title, body, "LIVE")
+
+    def _restore_live_insight(self) -> None:
+        if self._insight_pinned_key is None:
+            self._render_insight(
+                self._live_insight_title,
+                self._live_insight_body,
+                "LIVE",
+            )
+
+    def _show_insight(self, key: str, pinned: bool | None = None) -> None:
+        if key not in INSIGHTS:
+            return
+        self._insight_active_key = key
+        if pinned is True:
+            self._insight_pinned_key = key
+        elif pinned is False:
+            self._insight_pinned_key = None
+
+        if self._insight_pinned_key is None and pinned is False:
+            self._restore_live_insight()
+            return
+
+        status = "PINNED" if self._insight_pinned_key else "EXPLAINING"
+        self._render_insight(key, INSIGHTS[key], status)
+
+    def eventFilter(self, watched, event) -> bool:
+        key = self._insight_targets.get(watched)
+        if key is not None:
+            if event.type() == QEvent.Type.Enter and self._insight_pinned_key is None:
+                self._show_insight(key)
+            elif event.type() == QEvent.Type.Leave and self._insight_pinned_key is None:
+                self._restore_live_insight()
+            elif event.type() == QEvent.Type.MouseButtonPress:
+                if self._insight_pinned_key == key:
+                    self._show_insight(key, pinned=False)
+                else:
+                    self._show_insight(key, pinned=True)
+        return super().eventFilter(watched, event)
+
     def reset(self) -> None:
         self.current_recommendations = []
+        self._insight_pinned_key = None
+        self._set_live_insight(
+            "READY FOR ANALYSIS",
+            "Select players and run an analysis. The strongest recommendation "
+            "and its clearest reasons will appear here automatically.",
+        )
         self.status_label.setText(
             "Select players and click Analyze Selected."
         )
@@ -550,6 +780,7 @@ class CommandCenterWidget(QWidget):
             )
 
             button = QPushButton()
+            self._register_insight(button, "TOP ALTERNATIVES")
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.setSizePolicy(
                 QSizePolicy.Policy.Expanding,
@@ -772,6 +1003,17 @@ class CommandCenterWidget(QWidget):
                 f"• {reason}"
                 for reason in recommendation.reasons
             )
+        )
+
+        top_reasons = tuple(recommendation.reasons[:3])
+        reason_text = (
+            "\n".join(f"• {reason}" for reason in top_reasons)
+            if top_reasons
+            else "This player has the strongest overall recommendation profile."
+        )
+        self._set_live_insight(
+            f"{recommendation.action}: {recommendation.player_name}",
+            reason_text,
         )
 
     @staticmethod
