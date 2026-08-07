@@ -312,7 +312,12 @@ QTableWidget#DraftRoomPlayerTable {
 
 QTableWidget#DraftRoomPlayerTable::item {
     border: 0;
-    padding: 3px 6px;
+    padding: 4px 7px;
+}
+
+QTableWidget#DraftRoomPlayerTable::item:selected {
+    background-color: #173a67;
+    color: #ffffff;
 }
 
 QTableWidget#DraftRoomPlayerTable::item:hover {
@@ -337,7 +342,6 @@ QLabel#WorkspaceSelection {
 }
 
 QPushButton#WorkspacePrimaryButton,
-QPushButton#WorkspaceAnalyzeButton,
 QPushButton#WorkspaceSecondaryButton {
     border-radius: 7px;
     padding: 0 12px;
@@ -349,12 +353,6 @@ QPushButton#WorkspacePrimaryButton {
     background-color: #0f6fe8;
     border: 1px solid #2f8cff;
     color: #ffffff;
-}
-
-QPushButton#WorkspaceAnalyzeButton {
-    background-color: #0e7490;
-    border: 1px solid #0891b2;
-    color: #ecfeff;
 }
 
 QPushButton#WorkspaceSecondaryButton {

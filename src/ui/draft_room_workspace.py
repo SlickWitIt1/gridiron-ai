@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QTimer, Qt, Signal
+from PySide6.QtGui import QColor, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from asset_manager import DEFAULT_ASSET_MANAGER, short_player_name
 from live_draft import LiveDraftSession
 from preferences import normalize_name
 from projection_loader import load_projections
@@ -75,6 +76,11 @@ class DraftRoomPlayerBrowser(QFrame):
         self._active_position = "ALL"
         self._filter_buttons: dict[str, QPushButton] = {}
 
+        self._analysis_timer = QTimer(self)
+        self._analysis_timer.setSingleShot(True)
+        self._analysis_timer.setInterval(350)
+        self._analysis_timer.timeout.connect(self._emit_instant_analysis)
+
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -126,11 +132,8 @@ class DraftRoomPlayerBrowser(QFrame):
 
         layout.addLayout(top)
 
-        self.table = QTableWidget(0, 7)
+        self.table = QTableWidget(0, 1)
         self.table.setObjectName("DraftRoomPlayerTable")
-        self.table.setHorizontalHeaderLabels(
-            ("RK", "PLAYER", "ADP", "BYE", "PROJ", "TIER", "POS")
-        )
         self.table.verticalHeader().hide()
         self.table.setShowGrid(False)
         self.table.setAlternatingRowColors(True)
@@ -140,22 +143,10 @@ class DraftRoomPlayerBrowser(QFrame):
         self.table.setSortingEnabled(False)
         self.table.setWordWrap(False)
         self.table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.table.setIconSize(QPixmap(30, 30).size())
 
-        header = self.table.horizontalHeader()
-        header.setStretchLastSection(False)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        for column in (2, 3, 4, 5, 6):
-            header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
-
-        self.table.setColumnWidth(0, 48)
-        self.table.setColumnWidth(2, 55)
-        self.table.setColumnWidth(3, 55)
-        self.table.setColumnWidth(4, 48)
-        self.table.setColumnWidth(5, 74)
-        self.table.setColumnWidth(6, 50)
-
-        self.table.itemSelectionChanged.connect(self._update_action_state)
+        self._configure_table_columns()
+        self.table.itemSelectionChanged.connect(self._selection_changed)
         self.table.itemDoubleClicked.connect(self._double_click)
         layout.addWidget(self.table, 1)
 
@@ -171,12 +162,6 @@ class DraftRoomPlayerBrowser(QFrame):
         self.undo_button.setFixedHeight(34)
         self.undo_button.clicked.connect(self.undo_requested.emit)
         actions.addWidget(self.undo_button)
-
-        self.analyze_button = QPushButton("ANALYZE SELECTED")
-        self.analyze_button.setObjectName("WorkspaceAnalyzeButton")
-        self.analyze_button.setFixedHeight(34)
-        self.analyze_button.clicked.connect(self._analyze)
-        actions.addWidget(self.analyze_button)
 
         self.record_button = QPushButton("RECORD PICK")
         self.record_button.setObjectName("WorkspacePrimaryButton")
@@ -217,6 +202,7 @@ class DraftRoomPlayerBrowser(QFrame):
 
     def _set_position_filter(self, position_key: str) -> None:
         self._active_position = position_key
+        self._configure_table_columns()
         self.refresh_table()
 
     def _user_position_counts(self) -> dict[str, int]:
@@ -271,6 +257,142 @@ class DraftRoomPlayerBrowser(QFrame):
             button.style().polish(button)
             button.update()
 
+    def _column_schema(self) -> tuple[tuple[str, str], ...]:
+        """Return the most useful draft-day columns for the active position tab."""
+        position = self._active_position
+
+        if position == "QB":
+            return (
+                ("RK", "rank"),
+                ("PLAYER", "player"),
+                ("ADP", "adp"),
+                ("BYE", "bye"),
+                ("PROJ", "projection"),
+                ("PASS YDS", "passing_yards"),
+                ("PASS TD", "passing_touchdowns"),
+                ("INT", "interceptions"),
+                ("RUSH YDS", "rushing_yards"),
+                ("RUSH TD", "rushing_touchdowns"),
+            )
+
+        if position == "RB":
+            return (
+                ("RK", "rank"),
+                ("PLAYER", "player"),
+                ("ADP", "adp"),
+                ("BYE", "bye"),
+                ("PROJ", "projection"),
+                ("RUSH ATT", "rushing_attempts"),
+                ("RUSH YDS", "rushing_yards"),
+                ("RUSH TD", "rushing_touchdowns"),
+                ("REC", "receptions"),
+                ("REC YDS", "receiving_yards"),
+                ("REC TD", "receiving_touchdowns"),
+            )
+
+        if position in {"WR", "TE"}:
+            return (
+                ("RK", "rank"),
+                ("PLAYER", "player"),
+                ("ADP", "adp"),
+                ("BYE", "bye"),
+                ("PROJ", "projection"),
+                ("REC", "receptions"),
+                ("REC YDS", "receiving_yards"),
+                ("REC TD", "receiving_touchdowns"),
+                ("RUSH YDS", "rushing_yards"),
+                ("RUSH TD", "rushing_touchdowns"),
+            )
+
+        if position == "FLEX":
+            return (
+                ("RK", "rank"),
+                ("PLAYER", "player"),
+                ("ADP", "adp"),
+                ("BYE", "bye"),
+                ("PROJ", "projection"),
+                ("RUSH YDS", "rushing_yards"),
+                ("RUSH TD", "rushing_touchdowns"),
+                ("REC", "receptions"),
+                ("REC YDS", "receiving_yards"),
+                ("REC TD", "receiving_touchdowns"),
+            )
+
+        if position == "K":
+            return (
+                ("RK", "rank"),
+                ("PLAYER", "player"),
+                ("BYE", "bye"),
+                ("PROJ", "projection"),
+                ("FG", "field_goals_made"),
+                ("FGA", "field_goals_attempted"),
+                ("XP", "extra_points_made"),
+            )
+
+        if position == "DST":
+            return (
+                ("RK", "rank"),
+                ("PLAYER", "player"),
+                ("BYE", "bye"),
+                ("PROJ", "projection"),
+                ("SACK", "sacks"),
+                ("INT", "interceptions"),
+                ("FR", "fumble_recoveries"),
+                ("TD", "touchdowns"),
+                ("PA", "points_allowed"),
+            )
+
+        # ALL remains intentionally compact for fast browsing.
+        return (
+            ("RK", "rank"),
+            ("PLAYER", "player"),
+            ("ADP", "adp"),
+            ("BYE", "bye"),
+            ("PROJ", "projection"),
+            ("TIER", "tier"),
+            ("POS", "position"),
+        )
+
+    def _configure_table_columns(self) -> None:
+        schema = self._column_schema()
+        self.table.setColumnCount(len(schema))
+        self.table.setHorizontalHeaderLabels(tuple(title for title, _key in schema))
+
+        header = self.table.horizontalHeader()
+        header.setStretchLastSection(False)
+
+        for column, (_title, key) in enumerate(schema):
+            if key == "player":
+                header.setSectionResizeMode(column, QHeaderView.ResizeMode.Stretch)
+            else:
+                header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+
+        # Keep player identity prominent, but stop it from swallowing the entire panel.
+        player_column = next(
+            (index for index, (_title, key) in enumerate(schema) if key == "player"),
+            None,
+        )
+        if player_column is not None:
+            self.table.setColumnWidth(player_column, 210)
+
+    @staticmethod
+    def _format_stat(value: float | int | None) -> str:
+        if value is None:
+            return "—"
+
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return "—"
+
+        if abs(numeric) < 0.0001:
+            return "0"
+
+        if numeric.is_integer():
+            return str(int(numeric))
+
+        return f"{numeric:.1f}"
+
     def selected_player_names(self) -> tuple[str, ...]:
         rows = sorted({index.row() for index in self.table.selectionModel().selectedRows()})
         names = []
@@ -296,6 +418,7 @@ class DraftRoomPlayerBrowser(QFrame):
 
             query = normalize_name(self.search.text())
             wanted_position = self._active_position
+            schema = self._column_schema()
 
             for player in self._session.available_players():
                 position = base_position(player.position).upper()
@@ -305,82 +428,167 @@ class DraftRoomPlayerBrowser(QFrame):
                         continue
                 elif wanted_position != "ALL" and position != wanted_position:
                     continue
+
                 if query and query not in normalize_name(player.name):
                     continue
 
-                row = self.table.rowCount()
-                self.table.insertRow(row)
-                self.table.setRowHeight(row, 32)
-
                 projection = self._projections.get(normalize_name(player.name))
-                projected_points = getattr(projection, "fantasy_points", None)
-
-                adp = getattr(player, "adp", None)
-                player_text = player.name
-                if normalize_name(player.name) in self._approved_players:
-                    player_text += "   ★"
-
-                values = (
-                    str(getattr(player, "rank", "") or ""),
-                    player_text,
-                    f"{float(adp):.1f}" if isinstance(adp, (int, float)) else "—",
-                    str(getattr(player, "bye", "") or "—"),
-                    f"{projected_points:.1f}" if isinstance(projected_points, (int, float)) else "—",
-                    str(getattr(player, "tier", "") or "—"),
-                    f"{player.position}  {player.team}",
+                stats = projection.stats if projection is not None else {}
+                projected_points = (
+                    projection.fantasy_points
+                    if projection is not None
+                    else None
                 )
 
-                for column, text in enumerate(values):
-                    item = QTableWidgetItem(text)
-                    item.setData(Qt.ItemDataRole.UserRole, player.name)
+                row = self.table.rowCount()
+                self.table.insertRow(row)
+                self.table.setRowHeight(row, 40)
 
-                    if column == 1 and normalize_name(player.name) in self._approved_players:
-                        item.setForeground(QColor("#fde047"))
-                    elif column == 6:
+                for column, (_title, key) in enumerate(schema):
+                    if key == "player":
+                        my_guy = normalize_name(player.name) in self._approved_players
+                        display_name = short_player_name(player.name)
+                        player_text = (
+                            f"{display_name}{'   ★' if my_guy else ''}\n"
+                            f"{player.position}  •  {player.team}"
+                        )
+                        item = QTableWidgetItem(player_text)
+                        item.setForeground(
+                            QColor("#fde047" if my_guy else "#f8fafc")
+                        )
+
+                        headshot_path = DEFAULT_ASSET_MANAGER.headshot(player.name)
+                        if headshot_path is not None:
+                            pixmap = QPixmap(str(headshot_path))
+                            if not pixmap.isNull():
+                                scaled = pixmap.scaled(
+                                    30,
+                                    30,
+                                    Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                                    Qt.TransformationMode.SmoothTransformation,
+                                )
+                                item.setIcon(QIcon(scaled))
+
+                    elif key == "rank":
+                        item = QTableWidgetItem(
+                            str(getattr(player, "rank", "") or "—")
+                        )
+
+                    elif key == "adp":
+                        adp = getattr(player, "adp", None)
+                        text = (
+                            f"{float(adp):.1f}"
+                            if isinstance(adp, (int, float))
+                            else "—"
+                        )
+                        item = QTableWidgetItem(text)
+
+                    elif key == "bye":
+                        item = QTableWidgetItem(
+                            str(getattr(player, "bye", "") or "—")
+                        )
+
+                    elif key == "projection":
+                        item = QTableWidgetItem(
+                            f"{projected_points:.1f}"
+                            if isinstance(projected_points, (int, float))
+                            else "—"
+                        )
+
+                    elif key == "tier":
+                        item = QTableWidgetItem(
+                            str(getattr(player, "tier", "") or "—")
+                        )
+
+                    elif key == "position":
+                        item = QTableWidgetItem(
+                            f"{player.position}  {player.team}"
+                        )
                         item.setForeground(
                             QColor(POSITION_COLORS.get(position, "#e2e8f0"))
                         )
 
-                    if column != 1:
-                        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    else:
+                        item = QTableWidgetItem(
+                            self._format_stat(stats.get(key))
+                        )
+
+                        # TD columns get a subtle emphasis because touchdowns are
+                        # one of the fastest useful comparisons on draft day.
+                        if key.endswith("touchdowns") or key == "touchdowns":
+                            item.setForeground(QColor("#facc15"))
+
+                    item.setData(Qt.ItemDataRole.UserRole, player.name)
+
+                    if key != "player":
+                        item.setTextAlignment(
+                            Qt.AlignmentFlag.AlignCenter
+                        )
 
                     self.table.setItem(row, column, item)
 
                 if player.name in previously_selected:
                     self.table.selectRow(row)
+
         finally:
             self.table.blockSignals(False)
             self.table.setUpdatesEnabled(True)
 
         self._update_action_state()
 
+    def _selection_changed(self) -> None:
+        self._update_action_state()
+
+        if (
+            self._session is None
+            or not self._session.is_user_turn
+            or self._session.is_complete
+        ):
+            self._analysis_timer.stop()
+            return
+
+        if not self.selected_player_names():
+            self._analysis_timer.stop()
+            return
+
+        # Debounce rapid Cmd-click selection changes into one analysis.
+        self._analysis_timer.start()
+
+    def _emit_instant_analysis(self) -> None:
+        names = self.selected_player_names()
+        if (
+            names
+            and self._session is not None
+            and self._session.is_user_turn
+            and not self._session.is_complete
+        ):
+            self.analyze_requested.emit(names)
+
     def _update_action_state(self) -> None:
         names = self.selected_player_names()
         count = len(names)
-        is_user_turn = bool(self._session and self._session.is_user_turn)
         can_record = bool(self._session and not self._session.is_complete and count == 1)
 
         self.record_button.setEnabled(can_record)
-        self.analyze_button.setEnabled(is_user_turn and count >= 1)
 
         if count == 0:
             self.selection_label.setText("No player selected")
             self.record_button.setText("RECORD PICK")
         elif count == 1:
-            self.selection_label.setText(names[0])
             self.record_button.setText("RECORD PICK")
+            if self._session is not None and self._session.is_user_turn:
+                self.selection_label.setText(f"{names[0]}  •  AI updates automatically")
+            else:
+                self.selection_label.setText(names[0])
         else:
-            self.selection_label.setText(f"{count} candidates selected")
+            self.selection_label.setText(
+                f"{count} candidates selected  •  AI comparing automatically"
+            )
 
     def _record(self) -> None:
         names = self.selected_player_names()
         if len(names) == 1:
             self.record_requested.emit(names[0])
-
-    def _analyze(self) -> None:
-        names = self.selected_player_names()
-        if names:
-            self.analyze_requested.emit(names)
 
     def _double_click(self, item: QTableWidgetItem) -> None:
         value = item.data(Qt.ItemDataRole.UserRole)
