@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QDialog, QVBoxLayout
+from PySide6.QtWidgets import QDialog, QSplitter, QVBoxLayout, QWidget
 
 from live_draft import LiveDraftSession
 from ui.draft_board_widget import DraftBoardWidget
-from ui.draft_room_controls import DraftRoomControls
+from ui.draft_room_workspace import DraftRoomWorkspace
 
 
 DRAFT_BOARD_STYLESHEET = r"""
@@ -14,22 +14,8 @@ QDialog {
     color: #f8fafc;
 }
 
-QLabel#DraftRoomTitle,
-QLabel#DraftRoomSummary,
-QLabel#DraftRoomMetaTitle,
-QLabel#DraftRoundHeader,
-QLabel#DraftRoundLabel,
-QLabel#DraftTeamName,
-QLabel#DraftCardPick,
-QLabel#DraftCardPlayer,
-QLabel#DraftCardPosition,
-QLabel#DraftCardTeam,
-QLabel#DraftCardTeamLogo,
-QLabel#DraftCardIntel,
-QLabel#DraftRoomLegendText,
-QLabel#DraftRoomHoverIntel {
-    background-color: transparent;
-    border: 0;
+QLabel {
+    background: transparent;
 }
 
 QFrame#DraftRoomHeaderCard {
@@ -98,7 +84,6 @@ QLabel#DraftRoundLabel {
     color: #64748b;
     font-size: 10px;
     font-weight: 900;
-    letter-spacing: .5px;
 }
 
 QFrame#DraftTeamHeader {
@@ -116,7 +101,6 @@ QLabel#DraftTeamName {
     color: #e5edf8;
     font-size: 11px;
     font-weight: 950;
-    letter-spacing: .4px;
 }
 
 QFrame#DraftTeamHeader[userTeam="true"] QLabel#DraftTeamName {
@@ -211,22 +195,6 @@ QLabel#DraftCardTeam {
     font-weight: 750;
 }
 
-QLabel#DraftCardIntel {
-    color: #e2e8f0;
-    font-size: 9px;
-    font-weight: 850;
-}
-
-QLabel#DraftCardMyGuyBadge {
-    background-color: #1f2a3b;
-    border: 1px solid #34455e;
-    border-radius: 6px;
-    color: #facc15;
-    font-size: 9px;
-    font-weight: 950;
-    padding: 2px 5px;
-}
-
 QLabel#DraftCardClockBadge {
     background-color: #3a3005;
     border: 1px solid #facc15;
@@ -234,7 +202,6 @@ QLabel#DraftCardClockBadge {
     color: #fde047;
     font-size: 8px;
     font-weight: 950;
-    letter-spacing: .4px;
     padding: 2px 8px;
 }
 
@@ -244,21 +211,11 @@ QFrame#DraftRoomFooter {
     border-radius: 10px;
 }
 
-QFrame#DraftRoomFooterDivider {
-    color: #243248;
-    max-width: 1px;
-}
-
-QLabel#DraftRoomLegendText {
+QLabel#DraftRoomLegendText,
+QLabel#DraftRoomHoverIntel {
     color: #8ea0b8;
     font-size: 10px;
     font-weight: 700;
-}
-
-QLabel#DraftRoomHoverIntel {
-    color: #94a3b8;
-    font-size: 10px;
-    font-weight: 750;
 }
 
 QLabel#DraftRoomHoverIntel[active="true"] {
@@ -266,124 +223,198 @@ QLabel#DraftRoomHoverIntel[active="true"] {
     font-weight: 850;
 }
 
-QFrame#DraftRoomControls {
+/* --- Unified workspace --- */
+
+QSplitter#DraftRoomMainSplitter::handle,
+QSplitter#DraftRoomWorkspaceSplitter::handle {
+    background-color: #182235;
+}
+
+QSplitter#DraftRoomMainSplitter::handle:hover,
+QSplitter#DraftRoomWorkspaceSplitter::handle:hover {
+    background-color: #334155;
+}
+
+QFrame#DraftRoomPlayerBrowser,
+QFrame#DraftRoomAnalyticsPanel {
     background-color: #101725;
     border: 1px solid #243248;
-    border-radius: 12px;
+    border-radius: 11px;
 }
 
-QLabel#DraftControlHeading,
-QLabel#DraftControlTurn,
-QLabel#DraftControlMiniHeading,
-QLabel#DraftControlSelected,
-QLabel#DraftControlHint {
-    background: transparent;
-    border: 0;
-}
-
-QLabel#DraftControlHeading {
+QLabel#WorkspaceTitle,
+QLabel#AnalyticsEyebrow {
     color: #f8fafc;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 950;
     letter-spacing: .8px;
 }
 
-QLabel#DraftControlTurn {
-    color: #94a3b8;
+QLabel#WorkspaceSubtle,
+QLabel#AnalyticsMeta {
+    color: #8091aa;
+    font-size: 9px;
+    font-weight: 700;
+}
+
+QLineEdit#WorkspaceSearch,
+QComboBox#WorkspaceFilter {
+    background-color: #182235;
+    border: 1px solid #334155;
+    border-radius: 7px;
+    color: #e2e8f0;
+    padding: 5px 8px;
+    min-height: 23px;
+}
+
+QLineEdit#WorkspaceSearch:focus,
+QComboBox#WorkspaceFilter:focus {
+    border-color: #3b82f6;
+}
+
+QTableWidget#DraftRoomPlayerTable {
+    background-color: #0d1421;
+    alternate-background-color: #0d1421;
+    border: 1px solid #243248;
+    border-radius: 8px;
+    color: #e2e8f0;
+    selection-background-color: #173a67;
+    selection-color: #ffffff;
+    font-size: 10px;
+}
+
+QTableWidget#DraftRoomPlayerTable::item {
+    border: 0;
+    padding: 3px 6px;
+}
+
+QTableWidget#DraftRoomPlayerTable::item:hover {
+    background-color: #172033;
+}
+
+QHeaderView::section {
+    background-color: #182235;
+    color: #8193ad;
+    border: 0;
+    border-right: 1px solid #243248;
+    border-bottom: 1px solid #243248;
+    padding: 6px;
+    font-size: 9px;
+    font-weight: 900;
+}
+
+QLabel#WorkspaceSelection {
+    color: #9fb0c7;
     font-size: 10px;
     font-weight: 750;
 }
 
-QLabel#DraftControlMiniHeading {
-    color: #64748b;
+QPushButton#WorkspacePrimaryButton,
+QPushButton#WorkspaceAnalyzeButton,
+QPushButton#WorkspaceSecondaryButton {
+    border-radius: 7px;
+    padding: 0 12px;
     font-size: 9px;
     font-weight: 950;
-    letter-spacing: .8px;
 }
 
-QLabel#DraftControlSelected {
-    color: #e2e8f0;
-    font-size: 11px;
-    font-weight: 850;
-}
-
-QLabel#DraftControlHint {
-    color: #64748b;
-    font-size: 9px;
-}
-
-QLineEdit#DraftControlSearch,
-QComboBox#DraftControlPosition {
-    background-color: #182235;
-    border: 1px solid #334155;
-    border-radius: 8px;
-    color: #e2e8f0;
-    padding: 6px 9px;
-    min-height: 24px;
-}
-
-QLineEdit#DraftControlSearch:focus,
-QComboBox#DraftControlPosition:focus {
-    border-color: #3b82f6;
-}
-
-QListWidget#DraftControlPlayerList {
-    background-color: #0d1421;
-    border: 1px solid #243248;
-    border-radius: 9px;
-    color: #e2e8f0;
-    padding: 4px;
-    font-family: monospace;
-    font-size: 11px;
-}
-
-QListWidget#DraftControlPlayerList::item {
-    min-height: 24px;
-    padding: 2px 7px;
-    border-radius: 6px;
-}
-
-QListWidget#DraftControlPlayerList::item:selected {
-    background-color: #173a67;
+QPushButton#WorkspacePrimaryButton {
+    background-color: #0f6fe8;
+    border: 1px solid #2f8cff;
     color: #ffffff;
 }
 
-QListWidget#DraftControlPlayerList::item:hover:!selected {
-    background-color: #172033;
+QPushButton#WorkspaceAnalyzeButton {
+    background-color: #0e7490;
+    border: 1px solid #0891b2;
+    color: #ecfeff;
 }
 
-QPushButton#DraftControlPrimaryButton {
-    background-color: #0f6fe8;
-    border: 1px solid #2f8cff;
-    border-radius: 8px;
-    color: white;
-    font-size: 10px;
-    font-weight: 950;
-}
-
-QPushButton#DraftControlPrimaryButton:hover {
-    background-color: #1880ff;
-}
-
-QPushButton#DraftControlSecondaryButton {
+QPushButton#WorkspaceSecondaryButton {
     background-color: #26354a;
     border: 1px solid #3b4d66;
-    border-radius: 8px;
     color: #e2e8f0;
-    font-size: 10px;
-    font-weight: 900;
 }
 
-QPushButton#DraftControlSecondaryButton:hover {
-    background-color: #31435d;
-}
-
-QPushButton#DraftControlPrimaryButton:disabled,
-QPushButton#DraftControlSecondaryButton:disabled {
+QPushButton:disabled {
     background-color: #1b2534;
     border-color: #273548;
     color: #64748b;
 }
+
+QLabel#AnalyticsPlayer {
+    color: #ffffff;
+    font-size: 22px;
+    font-weight: 950;
+}
+
+QFrame#AnalyticsMetricCard {
+    background-color: #0d1421;
+    border: 1px solid #27364c;
+    border-radius: 8px;
+}
+
+QLabel#AnalyticsMetricTitle {
+    color: #70829b;
+    font-size: 8px;
+    font-weight: 900;
+    letter-spacing: .6px;
+}
+
+QLabel#AnalyticsMetricValue {
+    color: #f8fafc;
+    font-size: 15px;
+    font-weight: 950;
+}
+
+QLabel#AnalyticsAction {
+    background-color: #26354a;
+    border: 1px solid #3b4d66;
+    border-radius: 8px;
+    color: #cbd5e1;
+    padding: 7px;
+    font-size: 11px;
+    font-weight: 950;
+}
+
+QLabel#AnalyticsAction[action="draft"] {
+    background-color: #0b5f3c;
+    border-color: #22c55e;
+    color: #dcfce7;
+}
+
+QLabel#AnalyticsAction[action="risk"] {
+    background-color: #6a4319;
+    border-color: #f59e0b;
+    color: #fef3c7;
+}
+
+QLabel#AnalyticsAction[action="wait"] {
+    background-color: #173a67;
+    border-color: #3b82f6;
+    color: #dbeafe;
+}
+
+QLabel#AnalyticsSectionTitle {
+    color: #8091aa;
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: .7px;
+}
+
+QLabel#AnalyticsReasons {
+    color: #d6e0ec;
+    font-size: 10px;
+    font-weight: 750;
+}
+
+QLabel#AnalyticsAlternatives {
+    color: #8ea0b8;
+    font-size: 9px;
+    font-weight: 800;
+}
+
+/* Scrollbars */
 
 QScrollBar:vertical,
 QScrollBar:horizontal {
@@ -413,17 +444,18 @@ QScrollBar::sub-line {
 
 
 class DraftBoardDialog(QDialog):
-    """Modern card-based draft room with integrated live pick entry."""
+    """Unified live draft workspace: board above, player browser + AI below."""
 
     record_player_requested = Signal(str)
+    analyze_players_requested = Signal(object)
     undo_requested = Signal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
 
         self.setWindowTitle("Gridiron AI — Live Draft Room")
-        self.resize(1650, 900)
-        self.setMinimumSize(1100, 650)
+        self.resize(1650, 980)
+        self.setMinimumSize(1180, 720)
         self.setWindowFlag(Qt.WindowType.WindowMaximizeButtonHint, True)
         self.setStyleSheet(DRAFT_BOARD_STYLESHEET)
 
@@ -431,18 +463,44 @@ class DraftBoardDialog(QDialog):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(0)
 
-        self.board = DraftBoardWidget(self)
-        layout.addWidget(self.board, 1)
+        self.main_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.main_splitter.setObjectName("DraftRoomMainSplitter")
+        self.main_splitter.setChildrenCollapsible(False)
+        self.main_splitter.setHandleWidth(7)
 
-        self.controls = DraftRoomControls(self)
-        self.controls.record_requested.connect(self.record_player_requested.emit)
-        self.controls.undo_requested.connect(self.undo_requested.emit)
-        layout.addWidget(self.controls, 0)
+        self.board_host = QWidget()
+        board_layout = QVBoxLayout(self.board_host)
+        board_layout.setContentsMargins(0, 0, 0, 0)
+        board_layout.setSpacing(0)
+
+        self.board = DraftBoardWidget(self)
+        board_layout.addWidget(self.board)
+
+        self.workspace = DraftRoomWorkspace(self)
+        self.workspace.record_requested.connect(self.record_player_requested.emit)
+        self.workspace.analyze_requested.connect(self.analyze_players_requested.emit)
+        self.workspace.undo_requested.connect(self.undo_requested.emit)
+
+        self.main_splitter.addWidget(self.board_host)
+        self.main_splitter.addWidget(self.workspace)
+        self.main_splitter.setStretchFactor(0, 3)
+        self.main_splitter.setStretchFactor(1, 2)
+        self.main_splitter.setSizes([580, 360])
+
+        layout.addWidget(self.main_splitter)
 
     def refresh_board(
         self,
         session: LiveDraftSession | None,
         approved_players: set[str],
+        recommendations=(),
     ) -> None:
         self.board.refresh_board(session, approved_players)
-        self.controls.refresh(session, approved_players)
+        self.workspace.refresh(
+            session=session,
+            approved_players=approved_players,
+            recommendations=recommendations,
+        )
+
+    def set_analysis_running(self, player_count: int) -> None:
+        self.workspace.set_analysis_running(player_count)

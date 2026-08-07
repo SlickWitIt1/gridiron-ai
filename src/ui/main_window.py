@@ -1145,6 +1145,19 @@ class GridironWindow(QMainWindow):
         )
 
     def analyze_selected_players(self) -> None:
+        candidate_names = self.selected_player_names()
+        self._start_recommendation_analysis(candidate_names)
+
+    def analyze_players_from_draft_room(
+        self,
+        candidate_names,
+    ) -> None:
+        self._start_recommendation_analysis(tuple(candidate_names))
+
+    def _start_recommendation_analysis(
+        self,
+        candidate_names,
+    ) -> None:
         if self.session is None:
             return
 
@@ -1157,13 +1170,9 @@ class GridironWindow(QMainWindow):
                     "when your team is on the clock."
                 ),
             )
-
             return
 
-        next_pick = (
-            self.session.next_user_pick
-        )
-
+        next_pick = self.session.next_user_pick
         if next_pick is None:
             QMessageBox.information(
                 self,
@@ -1173,32 +1182,32 @@ class GridironWindow(QMainWindow):
                     "so wait analysis is unavailable."
                 ),
             )
-
             return
 
-        candidate_names = (
-            self.selected_player_names()
-        )
-
+        candidate_names = tuple(candidate_names)
         if not candidate_names:
             return
 
-        self.simulations = (
-            self.simulations_selector.value()
-        )
+        if (
+            self.recommendation_thread is not None
+            and self.recommendation_thread.isRunning()
+        ):
+            return
 
-        self.analyze_button.setEnabled(
-            False
-        )
+        self.simulations = self.simulations_selector.value()
 
-        self.record_pick_button.setEnabled(
-            False
-        )
+        self.analyze_button.setEnabled(False)
+        self.record_pick_button.setEnabled(False)
 
         self.command_center.set_running(
             simulations=self.simulations,
             player_count=len(candidate_names),
         )
+
+        if self.draft_board_dialog is not None:
+            self.draft_board_dialog.set_analysis_running(
+                len(candidate_names)
+            )
 
         self.statusBar().showMessage(
             "Recommendation analysis running..."
@@ -1208,23 +1217,13 @@ class GridironWindow(QMainWindow):
 
         self.recommendation_worker = RecommendationWorker(
             candidate_names=candidate_names,
-            draft_slot=(
-                self.session.user_team_number
-            ),
-            completed_player_names=(
-                self.session.completed_player_names
-            ),
-            current_pick=(
-                self.session.current_pick
-            ),
+            draft_slot=self.session.user_team_number,
+            completed_player_names=self.session.completed_player_names,
+            current_pick=self.session.current_pick,
             next_pick=next_pick,
             simulations=self.simulations,
-            user_team=(
-                self.session.state.user_team
-            ),
-            draft_picks=(
-                self.session.draft_results
-            ),
+            user_team=self.session.state.user_team,
+            draft_picks=self.session.draft_results,
             previous_recommendation=self.coach_previous_recommendation,
             previous_forecast=self.coach_previous_forecast,
             selected_player_name=self.coach_pending_selected_player,
@@ -1237,23 +1236,18 @@ class GridironWindow(QMainWindow):
         self.recommendation_thread.started.connect(
             self.recommendation_worker.run
         )
-
         self.recommendation_worker.finished.connect(
             self.handle_recommendations
         )
-
         self.recommendation_worker.failed.connect(
             self.handle_recommendation_error
         )
-
         self.recommendation_worker.finished.connect(
             self.recommendation_thread.quit
         )
-
         self.recommendation_worker.failed.connect(
             self.recommendation_thread.quit
         )
-
         self.recommendation_thread.finished.connect(
             self.cleanup_recommendation_thread
         )
@@ -1292,6 +1286,7 @@ class GridironWindow(QMainWindow):
         )
 
         self.update_selected_players()
+        self.refresh_draft_board_dialog()
 
     def apply_recommendation_color(
         self,
@@ -1450,12 +1445,16 @@ class GridironWindow(QMainWindow):
             self.draft_board_dialog.undo_requested.connect(
                 self.undo_last_pick
             )
+            self.draft_board_dialog.analyze_players_requested.connect(
+                self.analyze_players_from_draft_room
+            )
 
         self.draft_board_dialog.refresh_board(
             session=self.session,
             approved_players=(
                 self.approved_players
             ),
+            recommendations=self.current_recommendations,
         )
 
         self.draft_board_dialog.show()
@@ -1473,6 +1472,7 @@ class GridironWindow(QMainWindow):
             approved_players=(
                 self.approved_players
             ),
+            recommendations=self.current_recommendations,
         )
 
     def clear_recommendations(self) -> None:
