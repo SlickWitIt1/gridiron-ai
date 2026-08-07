@@ -8,6 +8,14 @@ DATA_DIR = PROJECT_ROOT / "data"
 OUTPUT_DIR = PROJECT_ROOT / "output"
 DOCS_DIR = PROJECT_ROOT / "docs"
 TESTS_DIR = PROJECT_ROOT / "tests"
+TOOLS_DIR = PROJECT_ROOT / "tools"
+
+ASSETS_DIR = PROJECT_ROOT / "assets"
+HEADSHOTS_DIR = ASSETS_DIR / "headshots"
+TEAM_LOGOS_DIR = ASSETS_DIR / "team_logos"
+ASSET_CACHE_DIR = ASSETS_DIR / "cache"
+PLAYER_ASSETS_FILE = ASSETS_DIR / "player_assets.json"
+SLEEPER_PLAYERS_CACHE_FILE = ASSET_CACHE_DIR / "sleeper_players_nfl.json"
 
 MY_GUYS_FILE = DATA_DIR / "My Guys.xlsx"
 RANKINGS_FILE = DATA_DIR / "FantasyPros_2026_Draft_ALL_Rankings.csv"
@@ -21,6 +29,16 @@ PROJECTION_FILES = {
     "K": DATA_DIR / "FantasyPros_Fantasy_Football_Projections_K.csv",
     "DST": DATA_DIR / "FantasyPros_Fantasy_Football_Projections_DST.csv",
 }
+
+
+def ensure_asset_directories() -> None:
+    for directory in (
+        ASSETS_DIR,
+        HEADSHOTS_DIR,
+        TEAM_LOGOS_DIR,
+        ASSET_CACHE_DIR,
+    ):
+        directory.mkdir(parents=True, exist_ok=True)
 
 
 def required_data_files() -> tuple[Path, ...]:

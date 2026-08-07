@@ -13,9 +13,6 @@ QDialog {
     color: #f8fafc;
 }
 
-/* The app-level stylesheet gives QWidget subclasses a dark background.
-   Draft-room labels should sit directly on their cards instead of looking
-   like little black text boxes. */
 QLabel#DraftRoomTitle,
 QLabel#DraftRoomSummary,
 QLabel#DraftRoomMetaTitle,
@@ -26,7 +23,10 @@ QLabel#DraftCardPick,
 QLabel#DraftCardPlayer,
 QLabel#DraftCardPosition,
 QLabel#DraftCardTeam,
-QLabel#DraftRoomLegendText {
+QLabel#DraftCardTeamLogo,
+QLabel#DraftCardIntel,
+QLabel#DraftRoomLegendText,
+QLabel#DraftRoomHoverIntel {
     background-color: transparent;
     border: 0;
 }
@@ -122,6 +122,16 @@ QFrame#DraftTeamHeader[userTeam="true"] QLabel#DraftTeamName {
     color: #93c5fd;
 }
 
+QFrame#DraftCardContent {
+    background-color: transparent;
+    border: 0;
+}
+
+QLabel#DraftCardTeamLogo,
+QLabel#DraftCardHeadshot {
+    background-color: transparent;
+    border: 0;
+}
 
 QFrame#DraftPickCard {
     background-color: #121a28;
@@ -177,31 +187,38 @@ QFrame#DraftPickCard[currentPick="true"][pulse="true"] {
 }
 
 QLabel#DraftCardPick {
-    color: #91a0b7;
+    color: #a7b6ca;
     font-size: 10px;
     font-weight: 900;
 }
 
 QLabel#DraftCardPlayer {
-    color: #f8fafc;
+    color: #ffffff;
     font-size: 12px;
     font-weight: 950;
 }
 
 QLabel#DraftCardPosition {
-    color: #e5edf8;
+    color: #f1f5f9;
     font-size: 10px;
     font-weight: 950;
 }
 
 QLabel#DraftCardTeam {
-    color: #c0cad8;
+    color: #d4deeb;
     font-size: 9px;
     font-weight: 750;
 }
 
-QLabel#DraftCardBadge {
-    background-color: #202b3d;
+QLabel#DraftCardIntel {
+    color: #e2e8f0;
+    font-size: 9px;
+    font-weight: 850;
+}
+
+QLabel#DraftCardMyGuyBadge {
+    background-color: #1f2a3b;
+    border: 1px solid #34455e;
     border-radius: 6px;
     color: #facc15;
     font-size: 9px;
@@ -209,16 +226,43 @@ QLabel#DraftCardBadge {
     padding: 2px 5px;
 }
 
-QFrame#DraftRoomLegend {
+QLabel#DraftCardClockBadge {
+    background-color: #3a3005;
+    border: 1px solid #facc15;
+    border-radius: 7px;
+    color: #fde047;
+    font-size: 8px;
+    font-weight: 950;
+    letter-spacing: .4px;
+    padding: 2px 8px;
+}
+
+QFrame#DraftRoomFooter {
     background-color: #101725;
     border: 1px solid #243248;
     border-radius: 10px;
+}
+
+QFrame#DraftRoomFooterDivider {
+    color: #243248;
+    max-width: 1px;
 }
 
 QLabel#DraftRoomLegendText {
     color: #8ea0b8;
     font-size: 10px;
     font-weight: 700;
+}
+
+QLabel#DraftRoomHoverIntel {
+    color: #94a3b8;
+    font-size: 10px;
+    font-weight: 750;
+}
+
+QLabel#DraftRoomHoverIntel[active="true"] {
+    color: #e2e8f0;
+    font-weight: 850;
 }
 
 QScrollBar:vertical,
@@ -258,15 +302,14 @@ class DraftBoardDialog(QDialog):
         self.resize(1650, 900)
         self.setMinimumSize(1100, 650)
         self.setWindowFlag(Qt.WindowType.WindowMaximizeButtonHint, True)
+        self.setStyleSheet(DRAFT_BOARD_STYLESHEET)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(0)
 
-        self.board = DraftBoardWidget()
+        self.board = DraftBoardWidget(self)
         layout.addWidget(self.board)
-
-        self.setStyleSheet(DRAFT_BOARD_STYLESHEET)
 
     def refresh_board(
         self,

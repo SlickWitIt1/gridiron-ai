@@ -8,17 +8,18 @@ from PySide6.QtWidgets import (
     QLabel,
     QProgressBar,
     QScrollArea,
-    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
 from live_draft import LiveDraftSession
+from preferences import normalize_name
+from projection_loader import load_projections
 from ui.draft_pick_card import DraftPickCard
 
 
 class DraftBoardWidget(QWidget):
-    """Card-based live draft board designed for future timeline/AI overlays."""
+    """Card-based live draft board with rich cards and fixed hover intelligence."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -26,6 +27,7 @@ class DraftBoardWidget(QWidget):
         self._cards: dict[int, DraftPickCard] = {}
         self._team_headers: dict[int, QFrame] = {}
         self._user_team_number: int | None = None
+        self._projections = load_projections()
 
         self._build_ui()
 
@@ -50,7 +52,6 @@ class DraftBoardWidget(QWidget):
         self.summary_label = QLabel("No active draft.")
         self.summary_label.setObjectName("DraftRoomSummary")
         title_stack.addWidget(self.summary_label)
-
         header_layout.addLayout(title_stack, 1)
 
         progress_stack = QVBoxLayout()
@@ -73,7 +74,6 @@ class DraftBoardWidget(QWidget):
         self.on_clock_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.on_clock_label.setMinimumWidth(185)
         header_layout.addWidget(self.on_clock_label)
-
         outer.addWidget(self.header_card)
 
         self.scroll_area = QScrollArea()
@@ -96,24 +96,40 @@ class DraftBoardWidget(QWidget):
         self.scroll_area.setWidget(self.board_content)
         outer.addWidget(self.scroll_area, 1)
 
-        self.legend_card = QFrame()
-        self.legend_card.setObjectName("DraftRoomLegend")
-        legend_layout = QHBoxLayout(self.legend_card)
-        legend_layout.setContentsMargins(12, 7, 12, 7)
-        legend_layout.setSpacing(18)
+        self.footer_card = QFrame()
+        self.footer_card.setObjectName("DraftRoomFooter")
+        footer_layout = QHBoxLayout(self.footer_card)
+        footer_layout.setContentsMargins(12, 7, 12, 7)
+        footer_layout.setSpacing(14)
 
+        legend = QWidget()
+        legend_layout = QHBoxLayout(legend)
+        legend_layout.setContentsMargins(0, 0, 0, 0)
+        legend_layout.setSpacing(12)
         legend_layout.addWidget(self._legend_item("●", "RB", "#34d399"))
         legend_layout.addWidget(self._legend_item("●", "WR", "#38bdf8"))
         legend_layout.addWidget(self._legend_item("●", "QB", "#a855f7"))
         legend_layout.addWidget(self._legend_item("●", "TE", "#fb923c"))
-        legend_layout.addSpacing(12)
         legend_layout.addWidget(self._legend_item("★", "My Guy", "#facc15"))
-        legend_layout.addStretch(1)
-        hint = QLabel("Your column is highlighted • Current pick pulses")
-        hint.setObjectName("DraftRoomLegendText")
-        legend_layout.addWidget(hint)
+        footer_layout.addWidget(legend)
 
-        outer.addWidget(self.legend_card)
+        divider = QFrame()
+        divider.setObjectName("DraftRoomFooterDivider")
+        divider.setFrameShape(QFrame.Shape.VLine)
+        footer_layout.addWidget(divider)
+
+        self.hover_intel_label = QLabel(
+            "Hover a drafted player for rank, tier, projection, bye week, and pick context."
+        )
+        self.hover_intel_label.setObjectName("DraftRoomHoverIntel")
+        self.hover_intel_label.setWordWrap(False)
+        footer_layout.addWidget(self.hover_intel_label, 1)
+
+        self.footer_hint = QLabel("Your column is highlighted • Current pick pulses")
+        self.footer_hint.setObjectName("DraftRoomLegendText")
+        footer_layout.addWidget(self.footer_hint)
+
+        outer.addWidget(self.footer_card)
 
     def _build_team_headers(self) -> None:
         spacer = QLabel("ROUND")
@@ -163,6 +179,8 @@ class DraftBoardWidget(QWidget):
                     pick_in_round=pick_in_round,
                     team_number=team_number,
                 )
+                card.hovered.connect(self._show_hover_intel)
+                card.hover_ended.connect(self._reset_hover_intel)
                 self.grid.addWidget(card, round_number, team_number)
                 self._cards[overall] = card
                 overall += 1
@@ -177,7 +195,9 @@ class DraftBoardWidget(QWidget):
         layout.setSpacing(4)
 
         symbol_label = QLabel(symbol)
-        symbol_label.setStyleSheet(f"color: {color}; font-weight: 900;")
+        symbol_label.setStyleSheet(
+            f"background: transparent; border: 0; color: {color}; font-weight: 900;"
+        )
         layout.addWidget(symbol_label)
 
         text_label = QLabel(text)
@@ -195,11 +215,12 @@ class DraftBoardWidget(QWidget):
             card.set_current_pick(False)
             card.set_user_team(False)
 
-        for team_number, header in self._team_headers.items():
+        for header in self._team_headers.values():
             header.setProperty("userTeam", "false")
             self._refresh_widget(header)
 
         self._user_team_number = None
+        self._reset_hover_intel()
 
         if session is None:
             self.summary_label.setText("No active draft.")
@@ -253,12 +274,56 @@ class DraftBoardWidget(QWidget):
 
             draft_pick = picks_by_overall.get(overall_pick)
             if draft_pick is not None:
-                card.show_player(draft_pick, approved_players)
+                projection = self._projections.get(
+                    normalize_name(draft_pick.player.name)
+                )
+                card.show_player(
+                    draft_pick,
+                    approved_players,
+                    projection=projection,
+                )
 
             if overall_pick == session.current_pick and not session.is_complete:
                 card.set_current_pick(True)
 
         self._scroll_to_current_pick(session.current_pick)
+
+    def _show_hover_intel(self, payload: dict[str, object]) -> None:
+        name = payload.get("name") or "Player"
+        position = payload.get("position") or "—"
+        team = payload.get("team") or "—"
+        rank = payload.get("rank")
+        tier = payload.get("tier")
+        bye = payload.get("bye")
+        projected_points = payload.get("projected_points")
+        round_number = payload.get("round_number")
+        pick_in_round = payload.get("pick_in_round")
+        is_my_guy = bool(payload.get("is_my_guy"))
+
+        parts = [f"{name}  •  {position} {team}"]
+        if isinstance(rank, int):
+            parts.append(f"Rank {rank}")
+        if isinstance(tier, int) and tier > 0:
+            parts.append(f"Tier {tier}")
+        if isinstance(projected_points, (int, float)):
+            parts.append(f"{projected_points:.1f} projected pts")
+        if isinstance(bye, int) and bye > 0:
+            parts.append(f"Bye {bye}")
+        if isinstance(round_number, int) and isinstance(pick_in_round, int):
+            parts.append(f"Pick {round_number}.{pick_in_round:02d}")
+        if is_my_guy:
+            parts.append("★ My Guy")
+
+        self.hover_intel_label.setText("   •   ".join(parts))
+        self.hover_intel_label.setProperty("active", "true")
+        self._refresh_widget(self.hover_intel_label)
+
+    def _reset_hover_intel(self) -> None:
+        self.hover_intel_label.setText(
+            "Hover a drafted player for rank, tier, projection, bye week, and pick context."
+        )
+        self.hover_intel_label.setProperty("active", "false")
+        self._refresh_widget(self.hover_intel_label)
 
     def _scroll_to_current_pick(self, current_pick: int) -> None:
         card = self._cards.get(current_pick)
