@@ -1,4 +1,17 @@
+# Python
 __pycache__/
 *.pyc
-.vscode/
+*.pyo
+
+# macOS
 .DS_Store
+
+# Virtual environment
+.venv/
+
+# Local saved draft session
+output/live_draft_session.json
+
+# Editors
+.vscode/
+.idea/
