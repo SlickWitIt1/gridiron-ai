@@ -19,7 +19,13 @@ class Recommendation:
     roster_fit_score: float
     roster_need: str
 
+    tier_number: int
+    tier_size: int
+    players_remaining_in_tier: int
     tier_drop_points: float
+    tier_urgency: str
+    is_last_in_tier: bool
+
     expected_value_lost: float
 
     score_breakdown: RecommendationScore

@@ -441,11 +441,17 @@ class CommandCenterWidget(QWidget):
                 QSizePolicy.Policy.Fixed,
             )
             button.setMinimumHeight(64)
+            tier_text = (
+                f"Tier {recommendation.tier_number} · "
+                f"{recommendation.players_remaining_in_tier} left"
+                if recommendation.tier_number > 0
+                else "Tier unavailable"
+            )
             button.setText(
                 f"#{rank}  {recommendation.player_name}   "
                 f"{position}\n"
                 f"{recommendation.score:.0f}/100  •  "
-                f"{recommendation.grade}  •  "
+                f"{recommendation.grade}  •  {tier_text}  •  "
                 f"{survival_text}  •  {recommendation.action}"
             )
             button.setStyleSheet(
@@ -507,8 +513,15 @@ class CommandCenterWidget(QWidget):
         )
 
         self.player_name_label.setText(recommendation.player_name)
+        tier_meta = (
+            f"  •  TIER {recommendation.tier_number}"
+            f"  •  {recommendation.players_remaining_in_tier} LEFT"
+            if recommendation.tier_number > 0
+            else ""
+        )
         self.player_meta_label.setText(
             f"{position}  •  {recommendation.projected_points:.1f} projected pts"
+            + tier_meta
             + ("  •  ★ MY GUY" if recommendation.is_my_guy else "")
         )
         self.position_badge.setText(position)
@@ -547,15 +560,26 @@ class CommandCenterWidget(QWidget):
             wait_text = f"Lower risk — {survival:.1%} survives"
 
         tier_drop = recommendation.tier_drop_points
-        tier_text = (
-            f"Major cliff — next {position} is {tier_drop:.1f} pts lower"
-            if tier_drop >= 15.0
-            else f"Meaningful drop — {tier_drop:.1f} pts"
-            if tier_drop >= 7.0
-            else f"Small drop — {tier_drop:.1f} pts"
-            if tier_drop > 0.0
-            else "No immediate positional cliff"
-        )
+        if recommendation.tier_number <= 0:
+            tier_text = "Tier data unavailable"
+        else:
+            tier_status = (
+                f"Tier {recommendation.tier_number} — LAST PLAYER"
+                if recommendation.is_last_in_tier
+                else (
+                    f"Tier {recommendation.tier_number} — "
+                    f"{recommendation.players_remaining_in_tier} remain"
+                )
+            )
+            drop_text = (
+                f"next tier is {tier_drop:.1f} pts lower"
+                if tier_drop > 0.0
+                else "no measured next-tier cliff"
+            )
+            tier_text = (
+                f"{tier_status}\n"
+                f"{recommendation.tier_urgency} urgency · {drop_text}"
+            )
 
         expected_loss = recommendation.expected_value_lost
         loss_text = (

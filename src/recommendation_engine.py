@@ -7,6 +7,8 @@ from projection_loader import load_projections
 from recommendation import Recommendation
 from recommendation_score import RecommendationScore
 from team import Team, base_position
+from tier import TierInfo
+from tier_engine import TierEngine
 from wait_analyzer import WaitAnalysis
 
 
@@ -68,6 +70,7 @@ class RecommendationEngine:
         )
 
         self.replacement_points = self._calculate_replacement_points()
+        self.tier_engine = TierEngine(self.projections)
 
     def _calculate_replacement_points(self) -> dict[str, float]:
         points_by_position: dict[str, list[float]] = {}
@@ -259,43 +262,23 @@ class RecommendationEngine:
 
         return score, tuple(reasons)
 
-    def _tier_drop_for(
-        self,
+    @staticmethod
+    def _fallback_tier_info(
         player_name: str,
         position: str,
         projected_points: float,
-        available_player_names: set[str] | None,
-    ) -> float:
-        if available_player_names is None:
-            return 0.0
-
-        normalized_player = normalize_name(player_name)
-        next_best_points = 0.0
-
-        for available_name in available_player_names:
-            normalized_name = normalize_name(available_name)
-
-            if normalized_name == normalized_player:
-                continue
-
-            player = self.players_by_name.get(normalized_name)
-            projection = self.projections.get(normalized_name)
-
-            if player is None or projection is None:
-                continue
-
-            if base_position(player.position) != position:
-                continue
-
-            next_best_points = max(
-                next_best_points,
-                projection.fantasy_points,
-            )
-
-        if next_best_points <= 0.0:
-            return 0.0
-
-        return max(0.0, projected_points - next_best_points)
+    ) -> TierInfo:
+        return TierInfo(
+            player_name=player_name,
+            position=position,
+            tier_number=0,
+            tier_size=1,
+            players_remaining=1,
+            projected_points=projected_points,
+            drop_to_next_tier=0.0,
+            urgency="LOW",
+            is_last_in_tier=True,
+        )
 
     def recommend(
         self,
@@ -307,6 +290,10 @@ class RecommendationEngine:
             set(available_player_names)
             if available_player_names is not None
             else None
+        )
+
+        tier_info_by_name = self.tier_engine.build_tiers(
+            available_names=available_names
         )
 
         prepared_results: list[dict[str, object]] = []
@@ -333,12 +320,15 @@ class RecommendationEngine:
                 team=user_team,
                 position=position,
             )
-            tier_drop_points = self._tier_drop_for(
-                player_name=player.name,
-                position=position,
-                projected_points=projection.fantasy_points,
-                available_player_names=available_names,
+            tier_info = tier_info_by_name.get(
+                normalized_name,
+                self._fallback_tier_info(
+                    player_name=player.name,
+                    position=position,
+                    projected_points=projection.fantasy_points,
+                ),
             )
+            tier_drop_points = tier_info.drop_to_next_tier
 
             prepared_results.append(
                 {
@@ -350,6 +340,7 @@ class RecommendationEngine:
                     "is_my_guy": is_my_guy,
                     "roster_fit_score": roster_fit_score,
                     "roster_reasons": roster_reasons,
+                    "tier_info": tier_info,
                     "tier_drop_points": tier_drop_points,
                 }
             )
@@ -368,6 +359,7 @@ class RecommendationEngine:
             is_my_guy = bool(item["is_my_guy"])
             roster_fit_score = float(item["roster_fit_score"])
             roster_reasons = item["roster_reasons"]
+            tier_info = item["tier_info"]
             tier_drop_points = float(item["tier_drop_points"])
 
             # Score projection value against a stable replacement-level
@@ -402,10 +394,24 @@ class RecommendationEngine:
             # player, while tier_drop_component rewards especially large
             # cliffs. Keeping this separate from raw projection prevents
             # double-counting the same signal.
-            scarcity_component = self._normalize(
-                tier_drop_points,
+            tier_pressure = {
+                "CRITICAL": 1.0,
+                "HIGH": 0.80,
+                "MEDIUM": 0.55,
+                "LOW": 0.25,
+            }.get(tier_info.urgency, 0.25)
+            scarcity_component = self._clamp(
+                (
+                    self._normalize(
+                        tier_drop_points,
+                        0.0,
+                        12.0,
+                        self.SCARCITY_MAX,
+                    )
+                    * 0.65
+                    + tier_pressure * self.SCARCITY_MAX * 0.35
+                ),
                 0.0,
-                12.0,
                 self.SCARCITY_MAX,
             )
 
@@ -454,14 +460,26 @@ class RecommendationEngine:
             ]
             reasons.extend(roster_reasons)
 
+            if tier_info.tier_number > 0:
+                tier_label = f"{position} Tier {tier_info.tier_number}"
+                if tier_info.is_last_in_tier:
+                    reasons.append(
+                        f"Last available player in {tier_label}."
+                    )
+                else:
+                    reasons.append(
+                        f"{tier_label}: {tier_info.players_remaining} "
+                        f"players remain in this tier."
+                    )
+
             if tier_drop_points >= 10.0:
                 reasons.append(
-                    f"Tier cliff: the next {position} projects "
-                    f"{tier_drop_points:.1f} points lower."
+                    f"The next tier begins {tier_drop_points:.1f} "
+                    f"projected points lower."
                 )
             elif tier_drop_points > 0.0:
                 reasons.append(
-                    f"The next {position} is {tier_drop_points:.1f} "
+                    f"The next tier is {tier_drop_points:.1f} "
                     f"projected points lower."
                 )
 
@@ -515,7 +533,14 @@ class RecommendationEngine:
                     survival_probability=survival_probability,
                     roster_fit_score=roster_fit_score,
                     roster_need=roster_need,
+                    tier_number=tier_info.tier_number,
+                    tier_size=tier_info.tier_size,
+                    players_remaining_in_tier=(
+                        tier_info.players_remaining
+                    ),
                     tier_drop_points=tier_drop_points,
+                    tier_urgency=tier_info.urgency,
+                    is_last_in_tier=tier_info.is_last_in_tier,
                     expected_value_lost=expected_value_lost,
                     score_breakdown=score_breakdown,
                     grade=self._grade(total_score),
