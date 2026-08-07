@@ -30,7 +30,7 @@ class DraftPulseWidget(QWidget):
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
+        layout.setSpacing(4)
 
         heading = QLabel("LIVE DRAFT PULSE")
         heading.setObjectName("PanelHeading")
@@ -39,8 +39,8 @@ class DraftPulseWidget(QWidget):
         self.card = QFrame()
         self.card.setObjectName("DraftPulseCard")
         card_layout = QVBoxLayout(self.card)
-        card_layout.setContentsMargins(12, 10, 12, 10)
-        card_layout.setSpacing(7)
+        card_layout.setContentsMargins(10, 8, 10, 8)
+        card_layout.setSpacing(5)
 
         self.headline_label = QLabel("Draft settling in")
         self.headline_label.setObjectName("DraftPulseHeadline")
@@ -55,8 +55,8 @@ class DraftPulseWidget(QWidget):
         card_layout.addWidget(self.detail_label)
 
         grid = QGridLayout()
-        grid.setHorizontalSpacing(8)
-        grid.setVerticalSpacing(5)
+        grid.setHorizontalSpacing(7)
+        grid.setVerticalSpacing(4)
 
         self.position_rows: dict[str, tuple[QLabel, QProgressBar]] = {}
 
@@ -72,7 +72,7 @@ class DraftPulseWidget(QWidget):
             bar.setTextVisible(True)
             bar.setFormat("0")
             bar.setObjectName("DraftPulseBar")
-            bar.setMinimumHeight(16)
+            bar.setMinimumHeight(17)
             bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
             grid.addWidget(label, row, 0)
