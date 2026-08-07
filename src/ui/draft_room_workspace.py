@@ -388,6 +388,170 @@ class DraftRoomPlayerBrowser(QFrame):
             self.record_requested.emit(str(value))
 
 
+class DraftRoomRosterPanel(QFrame):
+    """Live starter-slot roster view for the user's team."""
+
+    STARTER_SLOTS = (
+        ("QB", ("QB",)),
+        ("RB", ("RB",)),
+        ("RB", ("RB",)),
+        ("WR", ("WR",)),
+        ("WR", ("WR",)),
+        ("TE", ("TE",)),
+        ("FLEX", ("RB", "WR", "TE")),
+        ("D/ST", ("DST",)),
+        ("K", ("K",)),
+    )
+    BENCH_SLOTS = 7
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setObjectName("DraftRoomRosterPanel")
+        self._slot_rows: list[tuple[QLabel, QLabel, QLabel]] = []
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(6)
+
+        title = QLabel("MY ROSTER")
+        title.setObjectName("WorkspaceTitle")
+        layout.addWidget(title)
+
+        self.summary_label = QLabel("0 / 16 roster spots filled")
+        self.summary_label.setObjectName("WorkspaceSubtle")
+        layout.addWidget(self.summary_label)
+
+        self.rows_host = QWidget()
+        rows_layout = QVBoxLayout(self.rows_host)
+        rows_layout.setContentsMargins(0, 0, 0, 0)
+        rows_layout.setSpacing(3)
+
+        for slot_name, _eligible in self.STARTER_SLOTS:
+            rows_layout.addWidget(self._make_slot_row(slot_name, starter=True))
+
+        bench_header = QLabel("BENCH")
+        bench_header.setObjectName("RosterBenchHeader")
+        rows_layout.addWidget(bench_header)
+
+        for _ in range(self.BENCH_SLOTS):
+            rows_layout.addWidget(self._make_slot_row("BN", starter=False))
+
+        rows_layout.addStretch(1)
+        layout.addWidget(self.rows_host, 1)
+
+    def _make_slot_row(self, slot_name: str, *, starter: bool) -> QFrame:
+        frame = QFrame()
+        frame.setObjectName("RosterSlotRow")
+        frame.setProperty("starter", "true" if starter else "false")
+
+        row = QHBoxLayout(frame)
+        row.setContentsMargins(7, 4, 7, 4)
+        row.setSpacing(6)
+
+        slot_label = QLabel(slot_name)
+        slot_label.setObjectName("RosterSlotLabel")
+        slot_label.setFixedWidth(34)
+        row.addWidget(slot_label)
+
+        player_label = QLabel("—")
+        player_label.setObjectName("RosterPlayer")
+        player_label.setWordWrap(False)
+        row.addWidget(player_label, 1)
+
+        team_label = QLabel("")
+        team_label.setObjectName("RosterTeam")
+        team_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        team_label.setFixedWidth(36)
+        row.addWidget(team_label)
+
+        self._slot_rows.append((slot_label, player_label, team_label))
+        return frame
+
+    def refresh(self, session: LiveDraftSession | None) -> None:
+        # Clear every slot first.
+        for _slot_label, player_label, team_label in self._slot_rows:
+            player_label.setText("—")
+            player_label.setStyleSheet("")
+            team_label.clear()
+
+        if session is None:
+            self.summary_label.setText("0 / 16 roster spots filled")
+            return
+
+        user_players = [
+            draft_pick.player
+            for draft_pick in session.draft_results
+            if draft_pick.team_number == session.user_team_number
+        ]
+        self.summary_label.setText(f"{len(user_players)} / 16 roster spots filled")
+
+        remaining = list(user_players)
+        assignments: list[object | None] = []
+
+        # Fill strict starters in lineup order, but delay FLEX until base RB/WR/TE slots are handled.
+        strict_slots = self.STARTER_SLOTS[:6]
+        for _slot_name, eligible_positions in strict_slots:
+            chosen_index = next(
+                (
+                    index
+                    for index, player in enumerate(remaining)
+                    if base_position(player.position).upper() in eligible_positions
+                ),
+                None,
+            )
+            if chosen_index is None:
+                assignments.append(None)
+            else:
+                assignments.append(remaining.pop(chosen_index))
+
+        # FLEX: first remaining RB/WR/TE in draft order.
+        flex_index = next(
+            (
+                index
+                for index, player in enumerate(remaining)
+                if base_position(player.position).upper() in {"RB", "WR", "TE"}
+            ),
+            None,
+        )
+        if flex_index is None:
+            assignments.append(None)
+        else:
+            assignments.append(remaining.pop(flex_index))
+
+        # D/ST then K.
+        for wanted in ("DST", "K"):
+            chosen_index = next(
+                (
+                    index
+                    for index, player in enumerate(remaining)
+                    if base_position(player.position).upper() == wanted
+                ),
+                None,
+            )
+            if chosen_index is None:
+                assignments.append(None)
+            else:
+                assignments.append(remaining.pop(chosen_index))
+
+        # Bench preserves draft order after starters/FLEX are assigned.
+        assignments.extend(remaining[: self.BENCH_SLOTS])
+        while len(assignments) < len(self._slot_rows):
+            assignments.append(None)
+
+        for row_index, player in enumerate(assignments[: len(self._slot_rows)]):
+            _slot_label, player_label, team_label = self._slot_rows[row_index]
+            if player is None:
+                continue
+
+            player_label.setText(player.name)
+            position = base_position(player.position).upper()
+            color = POSITION_COLORS.get(position, "#e2e8f0")
+            player_label.setStyleSheet(f"color: {color}; font-weight: 850;")
+            team_label.setText(player.team)
+
+
 class DraftRoomAnalyticsPanel(QFrame):
     """Compact Gridiron AI decision surface for the unified Draft Room."""
 
@@ -552,7 +716,7 @@ class DraftRoomAnalyticsPanel(QFrame):
 
 
 class DraftRoomWorkspace(QWidget):
-    """Bottom half of the unified Draft Room."""
+    """Bottom workspace: Available Players | My Roster | Gridiron AI."""
 
     record_requested = Signal(str)
     analyze_requested = Signal(object)
@@ -571,6 +735,7 @@ class DraftRoomWorkspace(QWidget):
         self.splitter.setHandleWidth(7)
 
         self.players = DraftRoomPlayerBrowser()
+        self.roster = DraftRoomRosterPanel()
         self.analytics = DraftRoomAnalyticsPanel()
 
         self.players.record_requested.connect(self.record_requested.emit)
@@ -578,10 +743,17 @@ class DraftRoomWorkspace(QWidget):
         self.players.undo_requested.connect(self.undo_requested.emit)
 
         self.splitter.addWidget(self.players)
+        self.splitter.addWidget(self.roster)
         self.splitter.addWidget(self.analytics)
-        self.splitter.setStretchFactor(0, 3)
+
+        self.splitter.setStretchFactor(0, 5)
         self.splitter.setStretchFactor(1, 2)
-        self.splitter.setSizes([930, 600])
+        self.splitter.setStretchFactor(2, 3)
+        self.splitter.setSizes([760, 305, 455])
+
+        self.players.setMinimumWidth(500)
+        self.roster.setMinimumWidth(230)
+        self.analytics.setMinimumWidth(330)
 
         layout.addWidget(self.splitter)
 
@@ -592,6 +764,7 @@ class DraftRoomWorkspace(QWidget):
         recommendations=(),
     ) -> None:
         self.players.refresh(session, approved_players)
+        self.roster.refresh(session)
         self.analytics.set_recommendations(recommendations)
 
     def set_analysis_running(self, player_count: int) -> None:

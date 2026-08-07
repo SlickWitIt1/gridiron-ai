@@ -236,6 +236,7 @@ QSplitter#DraftRoomWorkspaceSplitter::handle:hover {
 }
 
 QFrame#DraftRoomPlayerBrowser,
+QFrame#DraftRoomRosterPanel,
 QFrame#DraftRoomAnalyticsPanel {
     background-color: #101725;
     border: 1px solid #243248;
@@ -367,6 +368,44 @@ QPushButton:disabled {
     border-color: #273548;
     color: #64748b;
 }
+
+
+QLabel#RosterBenchHeader {
+    color: #64748b;
+    font-size: 8px;
+    font-weight: 950;
+    letter-spacing: .8px;
+    padding-top: 4px;
+}
+
+QFrame#RosterSlotRow {
+    background-color: #0d1421;
+    border: 1px solid #243248;
+    border-radius: 6px;
+}
+
+QFrame#RosterSlotRow[starter="false"] {
+    background-color: #0f1724;
+}
+
+QLabel#RosterSlotLabel {
+    color: #70829b;
+    font-size: 9px;
+    font-weight: 950;
+}
+
+QLabel#RosterPlayer {
+    color: #cbd5e1;
+    font-size: 9px;
+    font-weight: 800;
+}
+
+QLabel#RosterTeam {
+    color: #64748b;
+    font-size: 8px;
+    font-weight: 850;
+}
+
 
 QLabel#AnalyticsPlayer {
     color: #ffffff;
