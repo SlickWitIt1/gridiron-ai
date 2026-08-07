@@ -133,6 +133,50 @@ class CommandCenterWidget(QWidget):
 
         layout.addWidget(self.hero_card)
 
+        strategy_heading = QLabel("CURRENT BUILD")
+        strategy_heading.setObjectName("SubsectionHeading")
+        layout.addWidget(strategy_heading)
+
+        self.strategy_card = QFrame()
+        self.strategy_card.setObjectName("InsightCard")
+        self.strategy_card.setStyleSheet(
+            "QFrame#InsightCard {"
+            "background-color: #151b25;"
+            "border: 1px solid #3b4a60;"
+            "border-radius: 12px;"
+            "}"
+        )
+        strategy_layout = QGridLayout(self.strategy_card)
+        strategy_layout.setContentsMargins(14, 12, 14, 12)
+        strategy_layout.setHorizontalSpacing(16)
+        strategy_layout.setVerticalSpacing(5)
+
+        self.strategy_name_label = QLabel("Still learning")
+        self.strategy_name_label.setStyleSheet(
+            "font-size: 19px; font-weight: 950; color: #f8fafc;"
+        )
+        self.strategy_confidence_label = QLabel("0% confidence")
+        self.strategy_confidence_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.strategy_confidence_label.setStyleSheet(
+            "font-size: 12px; font-weight: 900; color: #93c5fd;"
+        )
+        self.strategy_secondary_label = QLabel("Secondary: —")
+        self.strategy_secondary_label.setStyleSheet(
+            "font-size: 12px; color: #94a3b8;"
+        )
+        self.strategy_priority_label = QLabel("Next: Best Value")
+        self.strategy_priority_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.strategy_priority_label.setWordWrap(True)
+        self.strategy_priority_label.setStyleSheet(
+            "font-size: 12px; font-weight: 800; color: #cbd5e1;"
+        )
+
+        strategy_layout.addWidget(self.strategy_name_label, 0, 0)
+        strategy_layout.addWidget(self.strategy_confidence_label, 0, 1)
+        strategy_layout.addWidget(self.strategy_secondary_label, 1, 0)
+        strategy_layout.addWidget(self.strategy_priority_label, 1, 1)
+        layout.addWidget(self.strategy_card)
+
         cost_heading = QLabel("COST OF PASSING")
         cost_heading.setObjectName("SubsectionHeading")
         layout.addWidget(cost_heading)
@@ -198,6 +242,8 @@ class CommandCenterWidget(QWidget):
             "Roster Fit",
             "Scarcity",
             "Tier Drop",
+            "Opportunity Cost",
+            "Strategy Fit",
             "My Guy",
         )
 
@@ -395,6 +441,10 @@ class CommandCenterWidget(QWidget):
         self.action_label.setProperty("action", "neutral")
         self.action_label.style().unpolish(self.action_label)
         self.action_label.style().polish(self.action_label)
+        self.strategy_name_label.setText("Still learning")
+        self.strategy_confidence_label.setText("0% confidence")
+        self.strategy_secondary_label.setText("Secondary: —")
+        self.strategy_priority_label.setText("Next: Best Value")
         self.wait_risk_card.value_label.setText("No analysis yet")
         self.roster_fit_card.value_label.setText("No analysis yet")
         self.tier_drop_card.value_label.setText("No analysis yet")
@@ -696,6 +746,18 @@ class CommandCenterWidget(QWidget):
             f"{recommendation.roster_fit_score:+.1f}"
         )
         self.tier_drop_card.value_label.setText(tier_text)
+
+        self.strategy_name_label.setText(recommendation.primary_strategy)
+        self.strategy_confidence_label.setText(
+            f"{recommendation.strategy_confidence}% confidence"
+        )
+        self.strategy_secondary_label.setText(
+            f"Secondary: {recommendation.secondary_strategy or '—'}"
+        )
+        priorities = "  •  ".join(recommendation.strategy_priorities[:3])
+        self.strategy_priority_label.setText(
+            f"Next: {priorities or 'Best Value'}"
+        )
 
         for name, value, maximum in (
             recommendation.score_breakdown.component_items()

@@ -36,6 +36,14 @@ class Recommendation:
     opportunity_cost: float
     tier_disappearance_probability: float
 
+    primary_strategy: str
+    secondary_strategy: str | None
+    strategy_confidence: int
+    strategy_priorities: tuple[str, ...]
+    strategy_fit_score: float
+    strategy_fit_label: str
+    strategy_fit_explanation: str
+
     score_breakdown: RecommendationScore
 
     grade: str

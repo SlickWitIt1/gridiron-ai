@@ -5,6 +5,7 @@ from PySide6.QtCore import QObject, Signal
 from preferences import normalize_name
 from projection_loader import load_projections
 from recommendation_engine import RecommendationEngine
+from strategy_engine import StrategyEngine
 from wait_analyzer import WaitAnalyzer
 
 
@@ -21,6 +22,7 @@ class RecommendationWorker(QObject):
         next_pick: int,
         simulations: int,
         user_team,
+        draft_picks=(),
     ) -> None:
         super().__init__()
 
@@ -31,6 +33,7 @@ class RecommendationWorker(QObject):
         self.next_pick = next_pick
         self.simulations = simulations
         self.user_team = user_team
+        self.draft_picks = tuple(draft_picks)
 
     def run(self) -> None:
         try:
@@ -65,10 +68,16 @@ class RecommendationWorker(QObject):
                 approved_players=wait_analyzer.approved_players,
             )
 
+            strategy_result = StrategyEngine().analyze(
+                roster=self.user_team,
+                draft_picks=self.draft_picks,
+            )
+
             recommendations = recommendation_engine.recommend(
                 wait_results=wait_results,
                 user_team=self.user_team,
                 available_player_names=available_player_names,
+                strategy_result=strategy_result,
             )
 
             runtime = perf_counter() - start_time

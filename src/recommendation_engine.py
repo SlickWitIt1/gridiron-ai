@@ -6,6 +6,7 @@ from projection import Projection
 from projection_loader import load_projections
 from recommendation import Recommendation
 from recommendation_score import RecommendationScore
+from strategy import DraftStrategy, StrategyResult
 from team import Team, base_position
 from tier import TierInfo
 from tier_engine import TierEngine
@@ -39,11 +40,13 @@ class RecommendationEngine:
     RB_DEPTH_BONUS = 5.0
     WR_DEPTH_BONUS = 5.0
 
-    PROJECTION_MAX = 35.0
-    WAIT_RISK_MAX = 20.0
+    PROJECTION_MAX = 28.0
+    WAIT_RISK_MAX = 15.0
     ROSTER_FIT_MAX = 15.0
-    SCARCITY_MAX = 10.0
-    TIER_DROP_MAX = 15.0
+    SCARCITY_MAX = 8.0
+    TIER_DROP_MAX = 10.0
+    OPPORTUNITY_COST_MAX = 9.0
+    STRATEGY_FIT_MAX = 10.0
     PREFERENCE_MAX = 5.0
 
     def __init__(
@@ -262,6 +265,105 @@ class RecommendationEngine:
 
         return score, tuple(reasons)
 
+
+    @classmethod
+    def strategy_fit(
+        cls,
+        strategy_result: StrategyResult | None,
+        team: Team,
+        position: str,
+        tier_info: TierInfo,
+    ) -> tuple[float, str, str]:
+        """Score how naturally a candidate continues the detected build.
+
+        Strategy is intentionally a modifier, not a hard rule. Even a poor
+        structural fit can still win through projection, tier, and wait value.
+        """
+        if (
+            strategy_result is None
+            or strategy_result.primary_strategy == DraftStrategy.UNDETERMINED
+        ):
+            return (
+                cls.STRATEGY_FIT_MAX * 0.5,
+                "NEUTRAL",
+                "The draft strategy is still developing, so best value remains the priority.",
+            )
+
+        strategy = strategy_result.primary_strategy
+        score = cls.STRATEGY_FIT_MAX * 0.5
+        label = "NEUTRAL"
+        explanation = f"Neutral fit for the emerging {strategy.value} build."
+
+        preferred: set[str] = set()
+        acceptable: set[str] = set()
+        discouraged: set[str] = set()
+
+        if strategy == DraftStrategy.HERO_RB:
+            preferred = {"WR"}
+            acceptable = {"TE", "QB"}
+            discouraged = {"RB"}
+        elif strategy == DraftStrategy.ZERO_RB:
+            early_zero_rb = any(
+                "RB only" in priority
+                for priority in strategy_result.next_priorities
+            )
+            preferred = {"WR", "TE"} if early_zero_rb else {"RB"}
+            acceptable = {"QB", "WR", "TE"}
+            discouraged = {"RB"} if early_zero_rb else set()
+        elif strategy == DraftStrategy.ROBUST_RB:
+            preferred = {"WR"}
+            acceptable = {"TE", "QB"}
+            discouraged = {"RB"}
+        elif strategy == DraftStrategy.WR_HEAVY:
+            preferred = {"RB"}
+            acceptable = {"QB", "TE"}
+            discouraged = {"WR"}
+        elif strategy == DraftStrategy.ELITE_QB:
+            preferred = {"RB", "WR"}
+            acceptable = {"TE"}
+            discouraged = {"QB"}
+        elif strategy == DraftStrategy.ELITE_TE:
+            preferred = {"RB", "WR"}
+            acceptable = {"QB"}
+            discouraged = {"TE"}
+        elif strategy == DraftStrategy.BALANCED:
+            if team.needs_position(position):
+                preferred = {position}
+            acceptable = {"RB", "WR", "QB", "TE"}
+
+        if position in preferred:
+            score = cls.STRATEGY_FIT_MAX
+            label = "EXCELLENT"
+            explanation = (
+                f"Excellent continuation of your {strategy.value} build; "
+                f"{position} is a preferred next step."
+            )
+        elif position in acceptable:
+            score = cls.STRATEGY_FIT_MAX * 0.72
+            label = "GOOD"
+            explanation = (
+                f"Good structural fit for your {strategy.value} build without "
+                "forcing the strategy over player value."
+            )
+        elif position in discouraged:
+            # A critical tier cliff can justify temporarily breaking structure.
+            if tier_info.urgency in {"CRITICAL", "HIGH"}:
+                score = cls.STRATEGY_FIT_MAX * 0.45
+                label = "VALUE EXCEPTION"
+                explanation = (
+                    f"Another {position} is not the cleanest {strategy.value} "
+                    "continuation, but the tier pressure may justify it."
+                )
+            else:
+                score = cls.STRATEGY_FIT_MAX * 0.15
+                label = "POOR"
+                explanation = (
+                    f"This pick weakens the current {strategy.value} structure; "
+                    "consider the listed priorities unless the value is exceptional."
+                )
+
+        return score, label, explanation
+
     @staticmethod
     def _fallback_tier_info(
         player_name: str,
@@ -285,6 +387,7 @@ class RecommendationEngine:
         wait_results: Iterable[WaitAnalysis],
         user_team: Team,
         available_player_names: Iterable[str] | None = None,
+        strategy_result: StrategyResult | None = None,
     ) -> list[Recommendation]:
         available_names = (
             set(available_player_names)
@@ -329,6 +432,14 @@ class RecommendationEngine:
                 ),
             )
             tier_drop_points = tier_info.drop_to_next_tier
+            strategy_fit_score, strategy_fit_label, strategy_fit_explanation = (
+                self.strategy_fit(
+                    strategy_result=strategy_result,
+                    team=user_team,
+                    position=position,
+                    tier_info=tier_info,
+                )
+            )
 
             prepared_results.append(
                 {
@@ -342,6 +453,9 @@ class RecommendationEngine:
                     "roster_reasons": roster_reasons,
                     "tier_info": tier_info,
                     "tier_drop_points": tier_drop_points,
+                    "strategy_fit_score": strategy_fit_score,
+                    "strategy_fit_label": strategy_fit_label,
+                    "strategy_fit_explanation": strategy_fit_explanation,
                 }
             )
 
@@ -361,6 +475,9 @@ class RecommendationEngine:
             roster_reasons = item["roster_reasons"]
             tier_info = item["tier_info"]
             tier_drop_points = float(item["tier_drop_points"])
+            strategy_fit_score = float(item["strategy_fit_score"])
+            strategy_fit_label = str(item["strategy_fit_label"])
+            strategy_fit_explanation = str(item["strategy_fit_explanation"])
 
             # Score projection value against a stable replacement-level
             # scale. This avoids a player's score changing simply because
@@ -422,6 +539,20 @@ class RecommendationEngine:
                 self.TIER_DROP_MAX,
             )
 
+            opportunity_cost = wait_result.opportunity_cost
+            opportunity_cost_component = self._normalize(
+                max(0.0, opportunity_cost),
+                0.0,
+                25.0,
+                self.OPPORTUNITY_COST_MAX,
+            )
+
+            strategy_fit_component = self._clamp(
+                strategy_fit_score,
+                0.0,
+                self.STRATEGY_FIT_MAX,
+            )
+
             preference_component = (
                 self.PREFERENCE_MAX if is_my_guy else 0.0
             )
@@ -432,6 +563,8 @@ class RecommendationEngine:
                 roster_fit_component,
                 scarcity_component,
                 tier_drop_component,
+                opportunity_cost_component,
+                strategy_fit_component,
                 preference_component,
             )
 
@@ -445,7 +578,6 @@ class RecommendationEngine:
             # counterfactual simulations. Positive means taking this player
             # now produced more projected value across the current and next
             # user selections; negative means the pass path performed better.
-            opportunity_cost = wait_result.opportunity_cost
             expected_value_lost = max(0.0, opportunity_cost)
             confidence = self._confidence(
                 total_score=total_score,
@@ -464,6 +596,7 @@ class RecommendationEngine:
                 ),
             ]
             reasons.extend(roster_reasons)
+            reasons.append(strategy_fit_explanation)
 
             if tier_info.tier_number > 0:
                 tier_label = f"{position} Tier {tier_info.tier_number}"
@@ -548,6 +681,8 @@ class RecommendationEngine:
                 roster_fit=roster_fit_component,
                 scarcity=scarcity_component,
                 tier_drop=tier_drop_component,
+                opportunity_cost=opportunity_cost_component,
+                strategy_fit=strategy_fit_component,
                 preference=preference_component,
                 confidence=confidence,
             )
@@ -593,6 +728,32 @@ class RecommendationEngine:
                     tier_disappearance_probability=(
                         wait_result.tier_disappearance_probability
                     ),
+                    primary_strategy=(
+                        strategy_result.primary_strategy.value
+                        if strategy_result is not None
+                        else DraftStrategy.UNDETERMINED.value
+                    ),
+                    secondary_strategy=(
+                        strategy_result.secondary_strategy.value
+                        if (
+                            strategy_result is not None
+                            and strategy_result.secondary_strategy is not None
+                        )
+                        else None
+                    ),
+                    strategy_confidence=(
+                        strategy_result.confidence
+                        if strategy_result is not None
+                        else 0
+                    ),
+                    strategy_priorities=(
+                        strategy_result.next_priorities
+                        if strategy_result is not None
+                        else ("Best Value",)
+                    ),
+                    strategy_fit_score=strategy_fit_component,
+                    strategy_fit_label=strategy_fit_label,
+                    strategy_fit_explanation=strategy_fit_explanation,
                     score_breakdown=score_breakdown,
                     grade=self._grade(total_score),
                     action=self._action(survival_probability),

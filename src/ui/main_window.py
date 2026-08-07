@@ -1187,6 +1187,7 @@ class GridironWindow(QMainWindow):
             user_team=(
                 self.session.state.user_team
             ),
+            draft_picks=tuple(self.session.draft_results),
         )
 
         self.recommendation_worker.moveToThread(
