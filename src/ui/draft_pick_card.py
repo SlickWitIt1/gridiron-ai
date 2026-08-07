@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QTimer, Qt
+from PySide6.QtCore import QEvent, QTimer, Qt, Signal
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout
 
@@ -8,27 +8,11 @@ from preferences import normalize_name
 from team import base_position
 
 
-POSITION_COLORS = {
-    "QB": "#a855f7",
-    "RB": "#34d399",
-    "WR": "#38bdf8",
-    "TE": "#fb923c",
-    "DST": "#94a3b8",
-    "K": "#facc15",
-}
-
-POSITION_TINTS = {
-    "QB": "#2a1736",
-    "RB": "#153029",
-    "WR": "#132c38",
-    "TE": "#342315",
-    "DST": "#222a34",
-    "K": "#332f13",
-}
-
-
 class DraftPickCard(QFrame):
-    """Sleeper-inspired draft card for one overall selection."""
+    """One rich draft-board card with lightweight hover intelligence."""
+
+    hovered = Signal(object)
+    hover_ended = Signal()
 
     def __init__(
         self,
@@ -45,6 +29,10 @@ class DraftPickCard(QFrame):
         self.round_number = round_number
         self.pick_in_round = pick_in_round
         self.team_number = team_number
+
+        self._draft_pick = None
+        self._projection = None
+        self._is_my_guy = False
         self._is_current = False
         self._pulse_on = False
 
@@ -53,6 +41,7 @@ class DraftPickCard(QFrame):
         self.setProperty("userTeam", "false")
         self.setProperty("currentPick", "false")
         self.setProperty("pulse", "false")
+        self.setProperty("hovered", "false")
         self.setMinimumSize(148, 82)
         self.setMaximumHeight(96)
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -71,19 +60,24 @@ class DraftPickCard(QFrame):
         layout.setSpacing(4)
 
         top_row = QHBoxLayout()
-        top_row.setSpacing(6)
+        top_row.setSpacing(5)
 
         self.pick_label = QLabel()
         self.pick_label.setObjectName("DraftCardPick")
         top_row.addWidget(self.pick_label)
-
         top_row.addStretch(1)
 
-        self.badge_label = QLabel()
-        self.badge_label.setObjectName("DraftCardBadge")
-        self.badge_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.badge_label.hide()
-        top_row.addWidget(self.badge_label)
+        self.my_guy_badge = QLabel("★")
+        self.my_guy_badge.setObjectName("DraftCardMyGuyBadge")
+        self.my_guy_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.my_guy_badge.hide()
+        top_row.addWidget(self.my_guy_badge)
+
+        self.clock_badge = QLabel("ON CLOCK")
+        self.clock_badge.setObjectName("DraftCardClockBadge")
+        self.clock_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.clock_badge.hide()
+        top_row.addWidget(self.clock_badge)
 
         layout.addLayout(top_row)
 
@@ -109,20 +103,30 @@ class DraftPickCard(QFrame):
         layout.addLayout(meta_row)
 
     def show_empty(self) -> None:
+        self._draft_pick = None
+        self._projection = None
+        self._is_my_guy = False
+
         self.pick_label.setText(f"{self.round_number}.{self.pick_in_round:02d}")
-        self.player_label.setText("")
-        self.position_label.setText("")
-        self.team_label.setText("")
-        self.badge_label.hide()
+        self.player_label.clear()
+        self.position_label.clear()
+        self.team_label.clear()
+        self.my_guy_badge.hide()
         self.setProperty("position", "empty")
-        self.setToolTip(
-            f"Overall Pick {self.overall_pick} • Round {self.round_number} • Team {self.team_number}"
-        )
         self._refresh_style()
 
-    def show_player(self, draft_pick, approved_players: set[str]) -> None:
+    def show_player(
+        self,
+        draft_pick,
+        approved_players: set[str],
+        projection=None,
+    ) -> None:
+        self._draft_pick = draft_pick
+        self._projection = projection
+
         player = draft_pick.player
         position = base_position(player.position)
+        self._is_my_guy = normalize_name(player.name) in approved_players
 
         self.pick_label.setText(f"{self.round_number}.{self.pick_in_round:02d}")
         self.player_label.setText(player.name)
@@ -130,18 +134,30 @@ class DraftPickCard(QFrame):
         self.team_label.setText(player.team)
         self.setProperty("position", position.lower())
 
-        if normalize_name(player.name) in approved_players:
-            self.badge_label.setText("★")
-            self.badge_label.setProperty("kind", "myGuy")
-            self.badge_label.show()
+        if self._is_my_guy:
+            self.my_guy_badge.show()
         else:
-            self.badge_label.hide()
+            self.my_guy_badge.hide()
 
-        self.setToolTip(
-            f"{player.name} • {player.position} • {player.team} • "
-            f"Overall {self.overall_pick} • Round {self.round_number}"
-        )
         self._refresh_style()
+
+    def hover_payload(self) -> dict[str, object] | None:
+        if self._draft_pick is None:
+            return None
+
+        player = self._draft_pick.player
+        return {
+            "name": player.name,
+            "position": player.position,
+            "team": player.team,
+            "rank": getattr(player, "rank", None),
+            "tier": getattr(player, "tier", None),
+            "bye": getattr(player, "bye", None),
+            "projected_points": getattr(self._projection, "fantasy_points", None),
+            "is_my_guy": self._is_my_guy,
+            "round_number": self.round_number,
+            "pick_in_round": self.pick_in_round,
+        }
 
     def set_user_team(self, enabled: bool) -> None:
         self.setProperty("userTeam", "true" if enabled else "false")
@@ -152,18 +168,15 @@ class DraftPickCard(QFrame):
         self.setProperty("currentPick", "true" if enabled else "false")
 
         if enabled:
-            self.badge_label.setText("ON CLOCK")
-            self.badge_label.setProperty("kind", "clock")
-            self.badge_label.show()
+            self.clock_badge.show()
             self._pulse_on = True
             self.setProperty("pulse", "true")
             self._pulse_timer.start()
         else:
             self._pulse_timer.stop()
+            self.clock_badge.hide()
             self._pulse_on = False
             self.setProperty("pulse", "false")
-            if self.badge_label.property("kind") == "clock":
-                self.badge_label.hide()
 
         self._refresh_style()
 
@@ -182,9 +195,14 @@ class DraftPickCard(QFrame):
     def enterEvent(self, event: QEvent) -> None:
         self.setProperty("hovered", "true")
         self._refresh_style()
+        payload = self.hover_payload()
+        if payload is not None:
+            self.hovered.emit(payload)
         super().enterEvent(event)
 
     def leaveEvent(self, event: QEvent) -> None:
         self.setProperty("hovered", "false")
         self._refresh_style()
+        if self._draft_pick is not None:
+            self.hover_ended.emit()
         super().leaveEvent(event)
