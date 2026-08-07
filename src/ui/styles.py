@@ -572,3 +572,79 @@ QListWidget#AvailablePlayersList::item:selected {
     color: #ffffff;
 }
 """
+
+
+# Ticket 057: control sizing, native dropdown arrows, and left-panel balance.
+DARK_STYLESHEET += """
+QLabel#AvailablePlayersHeader {
+    background-color: #1c222c;
+    border: 1px solid #313845;
+    border-bottom: 0;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    color: #94a3b8;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: .4px;
+    padding: 6px 10px;
+}
+
+QListWidget#AvailablePlayersList {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+}
+
+/* Keep the native macOS/Qt arrow visible. */
+QComboBox#PositionFilter {
+    min-width: 112px;
+    padding: 5px 10px;
+}
+
+QComboBox#LeftControl {
+    padding: 4px 10px;
+}
+
+QSpinBox#LeftControl {
+    padding: 4px 28px 4px 10px;
+}
+
+QWidget#LeftPanel QLabel {
+    padding-left: 3px;
+    padding-right: 3px;
+}
+
+QWidget#LeftPanel QPushButton {
+    padding: 6px 10px;
+}
+
+QLabel#PlayerLegend {
+    color: #cbd5e1;
+    padding: 2px 1px 0 1px;
+}
+
+QFrame#DraftPulseCard {
+    margin-right: 2px;
+}
+"""
+
+
+# Ticket 057A: compact actions and unclipped left controls.
+DARK_STYLESHEET += """
+QComboBox#LeftControl,
+QSpinBox#LeftControl {
+    min-height: 28px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+}
+
+QSpinBox#LeftControl {
+    padding-left: 10px;
+    padding-right: 30px;
+}
+
+QWidget#LeftPanel QPushButton {
+    min-height: 0;
+    padding: 3px 10px;
+    font-size: 13px;
+}
+"""

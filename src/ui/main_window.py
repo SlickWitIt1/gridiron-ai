@@ -64,7 +64,7 @@ class GridironWindow(QMainWindow):
             QFontDatabase.SystemFont.FixedFont
         )
         self.available_player_font.setPointSize(12)
-        self.my_guy_icon = self._make_status_icon("#facc15")
+        self.my_guy_icon = self._make_status_icon("#ffd700")
         self.normal_player_icon = self._make_status_icon("#3b4657")
 
         self.recommendation_thread: QThread | None = None
@@ -147,14 +147,18 @@ class GridironWindow(QMainWindow):
         self.middle_panel = QVBoxLayout(self.middle_panel_widget)
         self.right_panel = QVBoxLayout(self.right_panel_widget)
 
-        for panel in (self.left_panel, self.middle_panel, self.right_panel):
-            panel.setContentsMargins(0, 0, 0, 0)
-            panel.setSpacing(8)
+        self.left_panel.setContentsMargins(0, 0, 8, 0)
+        self.middle_panel.setContentsMargins(0, 0, 8, 0)
+        self.right_panel.setContentsMargins(0, 0, 0, 0)
 
-        self.left_panel_widget.setMinimumWidth(245)
-        self.left_panel_widget.setMaximumWidth(330)
-        self.middle_panel_widget.setMinimumWidth(320)
-        self.middle_panel_widget.setMaximumWidth(470)
+        self.left_panel.setSpacing(10)
+        self.middle_panel.setSpacing(9)
+        self.right_panel.setSpacing(8)
+
+        self.left_panel_widget.setMinimumWidth(290)
+        self.left_panel_widget.setMaximumWidth(390)
+        self.middle_panel_widget.setMinimumWidth(350)
+        self.middle_panel_widget.setMaximumWidth(500)
         self.right_panel_widget.setMinimumWidth(560)
 
         self.content_splitter.addWidget(self.left_panel_widget)
@@ -163,7 +167,7 @@ class GridironWindow(QMainWindow):
         self.content_splitter.setStretchFactor(0, 0)
         self.content_splitter.setStretchFactor(1, 0)
         self.content_splitter.setStretchFactor(2, 1)
-        self.content_splitter.setSizes([280, 390, 830])
+        self.content_splitter.setSizes([325, 420, 755])
 
         self.setup_left_panel()
         self.setup_middle_panel()
@@ -232,6 +236,8 @@ class GridironWindow(QMainWindow):
         )
 
         self.slot_selector = QComboBox()
+        self.slot_selector.setObjectName("LeftControl")
+        self.slot_selector.setFixedHeight(40)
 
         for slot in range(1, 11):
             self.slot_selector.addItem(
@@ -253,6 +259,8 @@ class GridironWindow(QMainWindow):
         )
 
         self.simulations_selector = QSpinBox()
+        self.simulations_selector.setObjectName("LeftControl")
+        self.simulations_selector.setFixedHeight(40)
 
         self.simulations_selector.setRange(
             10,
@@ -270,6 +278,7 @@ class GridironWindow(QMainWindow):
         self.new_draft_button = QPushButton(
             "Start New Draft"
         )
+        self.new_draft_button.setFixedHeight(30)
 
         self.new_draft_button.clicked.connect(
             self.start_new_draft
@@ -282,6 +291,7 @@ class GridironWindow(QMainWindow):
         self.resume_button = QPushButton(
             "Resume Saved Draft"
         )
+        self.resume_button.setFixedHeight(30)
 
         self.resume_button.setObjectName(
             "SecondaryButton"
@@ -298,6 +308,7 @@ class GridironWindow(QMainWindow):
         self.undo_button = QPushButton(
             "Undo Last Pick"
         )
+        self.undo_button.setFixedHeight(30)
 
         self.undo_button.setObjectName(
             "SecondaryButton"
@@ -314,6 +325,7 @@ class GridironWindow(QMainWindow):
         self.draft_board_button = QPushButton(
             "Open Draft Board"
         )
+        self.draft_board_button.setFixedHeight(30)
 
         self.draft_board_button.setObjectName(
             "SecondaryButton"
@@ -330,6 +342,7 @@ class GridironWindow(QMainWindow):
         self.delete_save_button = QPushButton(
             "Delete Saved Draft"
         )
+        self.delete_save_button.setFixedHeight(30)
 
         self.delete_save_button.setObjectName(
             "DangerButton"
@@ -344,7 +357,7 @@ class GridironWindow(QMainWindow):
         )
 
         self.left_panel.addSpacing(
-            18
+            4
         )
 
         self.left_panel.addWidget(
@@ -355,8 +368,11 @@ class GridironWindow(QMainWindow):
 
         self.roster_list = QListWidget()
 
+        self.roster_list.setMinimumHeight(170)
+
         self.left_panel.addWidget(
-            self.roster_list
+            self.roster_list,
+            1,
         )
 
         self.roster_summary_label = QLabel()
@@ -370,15 +386,19 @@ class GridironWindow(QMainWindow):
         )
 
         self.left_panel.addSpacing(
-            10
+            4
         )
 
         self.draft_pulse_widget = DraftPulseWidget(
             window_size=10
         )
 
+        self.draft_pulse_widget.setMinimumHeight(158)
+        self.draft_pulse_widget.setMaximumHeight(174)
+
         self.left_panel.addWidget(
-            self.draft_pulse_widget
+            self.draft_pulse_widget,
+            0,
         )
 
     def setup_middle_panel(self) -> None:
@@ -389,6 +409,7 @@ class GridironWindow(QMainWindow):
         )
 
         filter_layout = QHBoxLayout()
+        filter_layout.setSpacing(8)
 
         self.search_input = QLineEdit()
 
@@ -406,6 +427,9 @@ class GridironWindow(QMainWindow):
         )
 
         self.position_filter = QComboBox()
+        self.position_filter.setObjectName("PositionFilter")
+        self.position_filter.setMinimumWidth(112)
+        self.position_filter.setFixedHeight(40)
 
         for position in POSITION_FILTERS:
             self.position_filter.addItem(
@@ -423,6 +447,12 @@ class GridironWindow(QMainWindow):
         self.middle_panel.addLayout(
             filter_layout
         )
+
+        self.available_header = QLabel("      RK   POS   PLAYER")
+        self.available_header.setObjectName("AvailablePlayersHeader")
+        self.available_header.setFont(self.available_player_font)
+        self.available_header.setMinimumHeight(30)
+        self.middle_panel.addWidget(self.available_header)
 
         self.available_list = QListWidget()
         self.available_list.setObjectName("AvailablePlayersList")
@@ -494,8 +524,11 @@ class GridironWindow(QMainWindow):
         )
 
         legend = QLabel(
-            "● My Guy   •   Double-click a player to record the pick"
+            '<span style="color:#ffd700;">●</span> My Guy'
+            '   •   Double-click a player to record the pick'
         )
+        legend.setTextFormat(Qt.TextFormat.RichText)
+        legend.setObjectName("PlayerLegend")
 
         self.middle_panel.addWidget(
             legend
@@ -830,7 +863,7 @@ class GridironWindow(QMainWindow):
                     QColor(position_colors.get(base_position, "#e2e8f0"))
                 )
                 item.setData(Qt.ItemDataRole.UserRole, player.name)
-                item.setSizeHint(QSize(0, 36))
+                item.setSizeHint(QSize(0, 39))
 
                 tooltip = (
                     f"{base_position} • {player.team} • "
