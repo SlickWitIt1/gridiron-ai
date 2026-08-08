@@ -127,6 +127,18 @@ QPushButton#HubResumeButton:disabled {
     color: #506078;
     border-color: #202e41;
 }
+
+QLabel#HubFooter {
+    color: #7b8ea7;
+    font-size: 13px;
+    font-weight: 800;
+}
+
+QLabel#HubVersion {
+    color: #6f829b;
+    font-size: 12px;
+    font-weight: 900;
+}
 """
 
 
@@ -272,6 +284,21 @@ class HomeHubWidget(QWidget):
         outer.addWidget(note)
 
         outer.addStretch(1)
+
+        footer = QVBoxLayout()
+        footer.setSpacing(2)
+
+        built_by = QLabel("Built by SlickWitIt1")
+        built_by.setObjectName("HubFooter")
+        built_by.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        footer.addWidget(built_by)
+
+        version = QLabel("v0.8.0-alpha")
+        version.setObjectName("HubVersion")
+        version.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        footer.addWidget(version)
+
+        outer.addLayout(footer)
 
     def _mode_card(
         self,
