@@ -1,7 +1,7 @@
 from collections import Counter, defaultdict
 from collections.abc import Iterable
 
-from forecast import DraftForecast, PlayerForecast, PositionForecast, TierForecast
+from forecast import DraftForecast, PickForecast, PlayerForecast, PositionForecast, TierForecast
 from loader import load_players
 from preferences import load_my_guys, normalize_name
 from projection_loader import load_projections
@@ -75,6 +75,10 @@ class ForecastEngine:
         position_pick_totals: Counter[str] = Counter()
         position_selected_counts: Counter[str] = Counter()
         run_counts: Counter[str] = Counter()
+
+        # Per-overall-pick position distributions power the visual timeline.
+        pick_position_counts: dict[int, Counter[str]] = defaultdict(Counter)
+        pick_team_numbers: dict[int, int] = {}
         player_survived_counts: Counter[str] = Counter()
         tier_survived_counts: Counter[tuple[str, int]] = Counter()
 
@@ -112,6 +116,13 @@ class ForecastEngine:
                 if base_position(pick.player.position) in TRACKED_POSITIONS
             ]
             interval_counts = Counter(interval_positions)
+
+            for pick in interval_picks:
+                position = base_position(pick.player.position)
+                if position not in TRACKED_POSITIONS:
+                    continue
+                pick_position_counts[pick.overall][position] += 1
+                pick_team_numbers[pick.overall] = pick.team_number
 
             for position in TRACKED_POSITIONS:
                 count = interval_counts.get(position, 0)
@@ -166,6 +177,33 @@ class ForecastEngine:
             for normalized_name, display_name in requested_normalized.items()
         )
 
+        pick_forecasts = tuple(
+            PickForecast(
+                overall_pick=overall_pick,
+                team_number=pick_team_numbers.get(overall_pick, 0),
+                most_likely_position=(
+                    pick_position_counts[overall_pick].most_common(1)[0][0]
+                    if pick_position_counts[overall_pick]
+                    else None
+                ),
+                probability=(
+                    pick_position_counts[overall_pick].most_common(1)[0][1]
+                    / simulations
+                    if pick_position_counts[overall_pick]
+                    else 0.0
+                ),
+                position_probabilities=tuple(
+                    (
+                        position,
+                        pick_position_counts[overall_pick][position] / simulations,
+                    )
+                    for position in TRACKED_POSITIONS
+                    if pick_position_counts[overall_pick][position] > 0
+                ),
+            )
+            for overall_pick in range(current_pick + 1, next_user_pick)
+        )
+
         tier_forecasts = tuple(
             TierForecast(
                 position=position,
@@ -190,4 +228,5 @@ class ForecastEngine:
             run_probability=run_probability,
             player_forecasts=player_forecasts,
             tier_forecasts=tier_forecasts,
+            pick_forecasts=pick_forecasts,
         )

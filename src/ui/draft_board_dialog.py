@@ -417,6 +417,209 @@ QLabel#RosterTeam {
 
 
 
+
+
+QFrame#GlanceHero {
+    background-color: #0c1625;
+    border: 1px solid #2b405d;
+    border-radius: 11px;
+}
+
+QLabel#GlanceMode {
+    color: #38bdf8;
+    font-size: 8px;
+    font-weight: 950;
+    letter-spacing: .8px;
+}
+
+QLabel#GlanceConfidence {
+    color: #91a2b8;
+    font-size: 8px;
+    font-weight: 900;
+}
+
+QLabel#GlancePlayer {
+    color: #ffffff;
+    font-size: 25px;
+    font-weight: 950;
+}
+
+QLabel#GlanceMeta {
+    color: #8092a9;
+    font-size: 8px;
+    font-weight: 850;
+}
+
+QLabel#GlanceScore {
+    color: #ffffff;
+    font-size: 17px;
+    font-weight: 950;
+}
+
+QLabel#GlanceGrade {
+    background-color: #172033;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    color: #cbd5e1;
+    font-size: 8px;
+    font-weight: 950;
+    padding: 4px 7px;
+}
+
+QLabel#GlanceReasons {
+    color: #e3ebf5;
+    font-size: 10px;
+    font-weight: 820;
+}
+
+QLabel#GlanceAlternatives {
+    background-color: #0c1421;
+    border: 1px solid #243248;
+    border-radius: 8px;
+    color: #b7c5d6;
+    font-size: 9px;
+    font-weight: 820;
+    padding: 8px 9px;
+}
+
+QToolButton#GlanceMoreButton {
+    background-color: #101a2a;
+    border: 1px solid #2b3a50;
+    border-radius: 8px;
+    color: #a9b8ca;
+    font-size: 9px;
+    font-weight: 900;
+    padding: 8px 9px;
+    text-align: left;
+}
+
+QToolButton#GlanceMoreButton:hover {
+    background-color: #162238;
+    border-color: #3d5270;
+    color: #f8fafc;
+}
+
+QToolButton#GlanceMoreButton:checked {
+    background-color: #132238;
+    border-color: #3b82f6;
+    color: #dbeafe;
+}
+
+QFrame#GlanceMoreContent {
+    background-color: #09111d;
+    border: 1px solid #213147;
+    border-radius: 8px;
+}
+
+QLabel#GlanceAdvancedTitle {
+    color: #71839c;
+    font-size: 8px;
+    font-weight: 950;
+    letter-spacing: .6px;
+}
+
+QFrame#CoachHero {
+    background-color: #0c1625;
+    border: 1px solid #2c405c;
+    border-radius: 11px;
+}
+
+QLabel#CoachEyebrow {
+    color: #38bdf8;
+    font-size: 8px;
+    font-weight: 950;
+    letter-spacing: .8px;
+}
+
+QLabel#CoachConfidence {
+    color: #a8b8cb;
+    font-size: 8px;
+    font-weight: 900;
+}
+
+QLabel#CoachCommand {
+    color: #ffffff;
+    font-size: 18px;
+    font-weight: 950;
+}
+
+QLabel#CoachPlayer {
+    color: #ffffff;
+    font-size: 23px;
+    font-weight: 950;
+}
+
+QLabel#CoachMeta {
+    color: #8495ab;
+    font-size: 8px;
+    font-weight: 850;
+}
+
+QLabel#CoachSummary {
+    background-color: #0d1421;
+    border-left: 3px solid #38bdf8;
+    border-radius: 7px;
+    color: #d8e3ef;
+    font-size: 10px;
+    font-weight: 760;
+    padding: 9px 10px;
+}
+
+QFrame#CoachSignalCard {
+    background-color: #101a2a;
+    border: 1px solid #26364d;
+    border-radius: 7px;
+}
+
+QLabel#CoachSignalTitle {
+    color: #64748b;
+    font-size: 7px;
+    font-weight: 950;
+    letter-spacing: .4px;
+}
+
+QLabel#CoachSignalValue {
+    color: #f8fafc;
+    font-size: 11px;
+    font-weight: 950;
+}
+
+QToolButton#CoachDisclosure {
+    background-color: #0d1421;
+    border: 1px solid #233249;
+    border-radius: 7px;
+    color: #aebed1;
+    font-size: 9px;
+    font-weight: 900;
+    padding: 7px 8px;
+    text-align: left;
+}
+
+QToolButton#CoachDisclosure:hover {
+    background-color: #142035;
+    border-color: #36506f;
+    color: #f1f5f9;
+}
+
+QToolButton#CoachDisclosure:checked {
+    background-color: #132238;
+    border-color: #3b82f6;
+    color: #dbeafe;
+}
+
+QFrame#CoachAdvancedCard {
+    background-color: #0a111d;
+    border: 1px solid #223147;
+    border-top: 0;
+    border-radius: 7px;
+}
+
+QLabel#CoachAdvancedText {
+    color: #aebed1;
+    font-size: 8px;
+    font-weight: 800;
+}
+
 QLabel#AnalyticsGrade {
     background-color: #172033;
     border: 1px solid #334155;
@@ -463,6 +666,122 @@ QLabel#AnalyticsConfidence {
     font-size: 8px;
     font-weight: 900;
     letter-spacing: .6px;
+}
+
+
+
+QFrame#DraftTimelineCard {
+    background-color: #0c1422;
+    border: 1px solid #2b3a50;
+    border-radius: 9px;
+}
+
+QLabel#DraftTimelineMeta,
+QLabel#DraftTimelineSummary {
+    color: #8798ae;
+    font-size: 8px;
+    font-weight: 800;
+}
+
+QFrame#DraftTimelineChip {
+    background-color: #101a2a;
+    border: 1px solid #26364d;
+    border-radius: 6px;
+    min-width: 42px;
+}
+
+QFrame#DraftTimelineChip:hover {
+    background-color: #162238;
+    border-color: #3d5270;
+}
+
+QLabel#DraftTimelinePick {
+    color: #73859d;
+    font-size: 7px;
+    font-weight: 900;
+}
+
+QLabel#DraftTimelinePosition {
+    font-size: 9px;
+    font-weight: 950;
+}
+
+QLabel#DraftTimelineProbability {
+    color: #cbd5e1;
+    font-size: 7px;
+    font-weight: 850;
+}
+
+QFrame#WaitIntelCard {
+    background-color: #0c1422;
+    border: 1px solid #2b3a50;
+    border-radius: 9px;
+}
+
+QLabel#WaitIntelHeadline {
+    background-color: #172033;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    color: #cbd5e1;
+    font-size: 8px;
+    font-weight: 950;
+    padding: 4px 7px;
+    letter-spacing: .4px;
+}
+
+QLabel#WaitIntelHeadline[risk="high"] {
+    background-color: #40202a;
+    border-color: #fb7185;
+    color: #fecdd3;
+}
+
+QLabel#WaitIntelHeadline[risk="medium"] {
+    background-color: #422d15;
+    border-color: #f59e0b;
+    color: #fde68a;
+}
+
+QLabel#WaitIntelHeadline[risk="safe"] {
+    background-color: #123022;
+    border-color: #22c55e;
+    color: #86efac;
+}
+
+QLabel#WaitIntelWindow {
+    color: #71839c;
+    font-size: 8px;
+    font-weight: 850;
+}
+
+QFrame#WaitIntelMetric {
+    background-color: #101a2a;
+    border: 1px solid #25344a;
+    border-radius: 6px;
+}
+
+QLabel#WaitIntelMetricTitle {
+    color: #64748b;
+    font-size: 7px;
+    font-weight: 950;
+    letter-spacing: .4px;
+}
+
+QLabel#WaitIntelMetricValue {
+    color: #f8fafc;
+    font-size: 14px;
+    font-weight: 950;
+}
+
+QLabel#WaitIntelDetail {
+    color: #8ea0b8;
+    font-size: 8px;
+    font-weight: 800;
+}
+
+QLabel#WaitIntelPath {
+    color: #b8c5d6;
+    font-size: 8px;
+    font-weight: 800;
 }
 
 QLabel#AnalyticsPlayer {
@@ -634,12 +953,16 @@ class DraftBoardDialog(QDialog):
         session: LiveDraftSession | None,
         approved_players: set[str],
         recommendations=(),
+        forecast=None,
+        recommendation_mode: str = "auto",
     ) -> None:
         self.board.refresh_board(session, approved_players)
         self.workspace.refresh(
             session=session,
             approved_players=approved_players,
             recommendations=recommendations,
+            forecast=forecast,
+            recommendation_mode=recommendation_mode,
         )
 
     def set_analysis_running(self, player_count: int) -> None:

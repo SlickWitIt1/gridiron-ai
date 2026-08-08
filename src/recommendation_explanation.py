@@ -180,6 +180,20 @@ class RecommendationExplanationBuilder:
                     f"Likely to survive: {survival:.0%} chance he reaches your next pick."
                 )
 
+        expected_position_picks = float(
+            getattr(recommendation, "expected_position_picks", 0.0) or 0.0
+        )
+        position_run_probability = float(
+            getattr(recommendation, "position_run_probability", 0.0) or 0.0
+        )
+        position = str(getattr(recommendation, "position", "") or "")
+
+        if expected_position_picks >= 2.5 or position_run_probability >= 0.45:
+            reasons.append(
+                f"Run pressure: {expected_position_picks:.1f} expected {position} "
+                f"picks before your next turn ({position_run_probability:.0%} run chance)."
+            )
+
         if opportunity_cost >= 5.0:
             reasons.append(
                 f"Taking him now projects {opportunity_cost:.1f} more roster pts "

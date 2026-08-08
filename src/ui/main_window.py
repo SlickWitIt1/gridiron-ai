@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QPushButton, QSpinBox, QSplitter, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
+from auto_recommendation import AutoRecommendationCandidateBuilder
 from draft_session_store import DraftSessionStore
 from live_draft import LiveDraftSession
 from preferences import load_my_guys, normalize_name
@@ -71,7 +72,16 @@ class GridironWindow(QMainWindow):
         self.recommendation_worker: RecommendationWorker | None = None
 
         self.current_recommendations = []
+        self.current_forecast = None
+        self.current_recommendation_mode = "auto"
         self.pending_recommendation_candidates: tuple[str, ...] | None = None
+        self.pending_recommendation_mode: str | None = None
+        self._active_recommendation_mode = "manual"
+        self._auto_analysis_pick: int | None = None
+
+        self.auto_candidate_builder = AutoRecommendationCandidateBuilder(
+            approved_players=self.approved_players,
+        )
 
         # Adaptive Coach memory. These snapshots survive the picks between
         # user turns so the next analysis can review the decision that was made.
@@ -565,6 +575,7 @@ class GridironWindow(QMainWindow):
     def show_start_screen(self) -> None:
         self.session = None
         self.current_recommendations = []
+        self.current_forecast = None
         self.pending_recommendation_candidates = None
         self.coach_pending_selected_player = None
         self.coach_previous_recommendation = None
@@ -825,6 +836,46 @@ class GridironWindow(QMainWindow):
         self.delete_save_button.setEnabled(
             self.store.exists()
         )
+
+        self._maybe_start_auto_recommendation()
+
+    def _maybe_start_auto_recommendation(self) -> None:
+        if (
+            self.session is None
+            or not self.session.is_user_turn
+            or self.session.is_complete
+        ):
+            return
+
+        if self._auto_analysis_pick == self.session.current_pick:
+            return
+
+        if (
+            self.recommendation_thread is not None
+            and self.recommendation_thread.isRunning()
+        ):
+            return
+
+        self._auto_analysis_pick = self.session.current_pick
+        QTimer.singleShot(120, self._start_auto_recommendation_for_current_pick)
+
+    def _start_auto_recommendation_for_current_pick(self) -> None:
+        if (
+            self.session is None
+            or not self.session.is_user_turn
+            or self.session.is_complete
+        ):
+            return
+
+        pool = self.auto_candidate_builder.build(self.session)
+        if not pool.player_names:
+            return
+
+        self.statusBar().showMessage(
+            f"Gridiron AI scanned {pool.scanned_players} available players; "
+            f"screening {len(pool.player_names)} serious candidates..."
+        )
+        self._start_recommendation_analysis(pool.player_names, mode="auto")
 
     def refresh_available_players(self) -> None:
         # QListWidgetItem rows are intentionally lightweight. Avoiding
@@ -1120,6 +1171,7 @@ class GridironWindow(QMainWindow):
 
         self.save_active_session()
         self.clear_recommendations()
+        self._auto_analysis_pick = None
         self.refresh_draft_view()
 
         self.statusBar().showMessage(
@@ -1139,6 +1191,7 @@ class GridironWindow(QMainWindow):
 
         self.save_active_session()
         self.clear_recommendations()
+        self._auto_analysis_pick = None
         self.refresh_draft_view()
 
         self.statusBar().showMessage(
@@ -1148,17 +1201,19 @@ class GridironWindow(QMainWindow):
 
     def analyze_selected_players(self) -> None:
         candidate_names = self.selected_player_names()
-        self._start_recommendation_analysis(candidate_names)
+        self._start_recommendation_analysis(candidate_names, mode="manual")
 
     def analyze_players_from_draft_room(
         self,
         candidate_names,
     ) -> None:
-        self._start_recommendation_analysis(tuple(candidate_names))
+        self._start_recommendation_analysis(tuple(candidate_names), mode="manual")
 
     def _start_recommendation_analysis(
         self,
         candidate_names,
+        *,
+        mode: str = "manual",
     ) -> None:
         if self.session is None:
             return
@@ -1175,16 +1230,6 @@ class GridironWindow(QMainWindow):
             return
 
         next_pick = self.session.next_user_pick
-        if next_pick is None:
-            QMessageBox.information(
-                self,
-                "Final pick",
-                (
-                    "This is your final selection, "
-                    "so wait analysis is unavailable."
-                ),
-            )
-            return
 
         candidate_names = tuple(candidate_names)
         if not candidate_names:
@@ -1195,9 +1240,12 @@ class GridironWindow(QMainWindow):
             and self.recommendation_thread.isRunning()
         ):
             self.pending_recommendation_candidates = tuple(candidate_names)
+            self.pending_recommendation_mode = mode
             return
 
         self.pending_recommendation_candidates = None
+        self.pending_recommendation_mode = None
+        self._active_recommendation_mode = mode
         self.simulations = self.simulations_selector.value()
 
         self.analyze_button.setEnabled(False)
@@ -1268,6 +1316,8 @@ class GridironWindow(QMainWindow):
         self.current_recommendations = list(
             recommendations
         )
+        self.current_forecast = forecast
+        self.current_recommendation_mode = self._active_recommendation_mode
 
         self.command_center.set_results(
             recommendations=recommendations,
@@ -1386,12 +1436,17 @@ class GridironWindow(QMainWindow):
         self.recommendation_thread = None
 
         pending = self.pending_recommendation_candidates
+        pending_mode = self.pending_recommendation_mode or "manual"
         self.pending_recommendation_candidates = None
+        self.pending_recommendation_mode = None
 
         if pending:
             QTimer.singleShot(
                 0,
-                lambda names=pending: self._start_recommendation_analysis(names),
+                lambda names=pending, mode=pending_mode: self._start_recommendation_analysis(
+                    names,
+                    mode=mode,
+                ),
             )
 
     def show_selected_recommendation(
@@ -1471,6 +1526,8 @@ class GridironWindow(QMainWindow):
                 self.approved_players
             ),
             recommendations=self.current_recommendations,
+            forecast=self.current_forecast,
+            recommendation_mode=self.current_recommendation_mode,
         )
 
         self.draft_board_dialog.show()
@@ -1489,10 +1546,14 @@ class GridironWindow(QMainWindow):
                 self.approved_players
             ),
             recommendations=self.current_recommendations,
+            forecast=self.current_forecast,
+            recommendation_mode=self.current_recommendation_mode,
         )
 
     def clear_recommendations(self) -> None:
         self.current_recommendations = []
+        self.current_forecast = None
+        self.current_recommendation_mode = "auto"
         self.command_center.reset()
 
     def closeEvent(self, event) -> None:

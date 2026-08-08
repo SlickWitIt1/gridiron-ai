@@ -104,6 +104,10 @@ INSIGHTS = {
         "How well this candidate continues your detected draft build. Strong tier value "
         "can still justify an exception."
     ),
+    "POSITION RUN": (
+        "How much the simulator expects this position to be drafted before your next turn. "
+        "Higher values mean a stronger projected run and more urgency to act now."
+    ),
     "MY GUY": (
         "A small preference bonus when the player is on your My Guys list."
     ),
@@ -479,6 +483,7 @@ class CommandCenterWidget(QWidget):
             "Tier Drop",
             "Opportunity Cost",
             "Strategy Fit",
+            "Position Run",
             "My Guy",
         )
 

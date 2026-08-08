@@ -29,6 +29,15 @@ class TierForecast:
 
 
 @dataclass(frozen=True, slots=True)
+class PickForecast:
+    overall_pick: int
+    team_number: int
+    most_likely_position: str | None
+    probability: float
+    position_probabilities: tuple[tuple[str, float], ...]
+
+
+@dataclass(frozen=True, slots=True)
 class DraftForecast:
     simulations: int
     current_pick: int
@@ -39,6 +48,7 @@ class DraftForecast:
     run_probability: float
     player_forecasts: tuple[PlayerForecast, ...]
     tier_forecasts: tuple[TierForecast, ...]
+    pick_forecasts: tuple[PickForecast, ...]
 
     def position(self, position: str) -> PositionForecast | None:
         target = position.upper()
@@ -47,6 +57,16 @@ class DraftForecast:
                 forecast
                 for forecast in self.position_forecasts
                 if forecast.position == target
+            ),
+            None,
+        )
+
+    def pick(self, overall_pick: int) -> PickForecast | None:
+        return next(
+            (
+                forecast
+                for forecast in self.pick_forecasts
+                if forecast.overall_pick == overall_pick
             ),
             None,
         )

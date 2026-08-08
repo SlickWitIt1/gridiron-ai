@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QToolButton,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -24,7 +25,9 @@ from asset_manager import DEFAULT_ASSET_MANAGER, short_player_name
 from live_draft import LiveDraftSession
 from preferences import normalize_name
 from projection_loader import load_projections
+from coach_message_builder import CoachMessageBuilder
 from recommendation_explanation import RecommendationExplanationBuilder
+from wait_intelligence import CostOfWaitingBuilder
 from team import base_position
 
 
@@ -102,16 +105,6 @@ class DraftRoomPlayerBrowser(QFrame):
 
         top.addStretch(1)
 
-        self.search = QLineEdit()
-        self.search.setObjectName("WorkspaceSearch")
-        self.search.setPlaceholderText("Find player…")
-        self.search.setClearButtonEnabled(True)
-        self.search.setMinimumWidth(165)
-        self.search.setMaximumWidth(195)
-        self.search.textChanged.connect(self.refresh_table)
-        top.addWidget(self.search)
-        top.addSpacing(10)
-
         self.position_group = QButtonGroup(self)
         self.position_group.setExclusive(True)
 
@@ -153,12 +146,22 @@ class DraftRoomPlayerBrowser(QFrame):
         self.table.itemDoubleClicked.connect(self._double_click)
         layout.addWidget(self.table, 1)
 
+        self.selection_label = QLabel("No player selected")
+        self.selection_label.setObjectName("WorkspaceSelection")
+        layout.addWidget(self.selection_label)
+
         actions = QHBoxLayout()
         actions.setSpacing(8)
 
-        self.selection_label = QLabel("No player selected")
-        self.selection_label.setObjectName("WorkspaceSelection")
-        actions.addWidget(self.selection_label, 1)
+        self.search = QLineEdit()
+        self.search.setObjectName("WorkspaceSearch")
+        self.search.setPlaceholderText("Find player…")
+        self.search.setClearButtonEnabled(True)
+        self.search.setMinimumWidth(150)
+        self.search.setMaximumWidth(16777215)
+        self.search.setFixedHeight(34)
+        self.search.textChanged.connect(self.refresh_table)
+        actions.addWidget(self.search, 1)
 
         self.undo_button = QPushButton("UNDO")
         self.undo_button.setObjectName("WorkspaceSecondaryButton")
@@ -879,11 +882,23 @@ class DraftRoomRosterPanel(QFrame):
 
 
 class DraftRoomAnalyticsPanel(QFrame):
-    """Draft-day recommendation card powered only by engine-produced facts."""
+    """Ultra-compact live-draft recommendation panel.
+
+    Default view answers only:
+      1) Who should I draft?
+      2) How strongly?
+      3) Why?
+      4) What's Plan B?
+
+    Everything else is hidden behind one More Analysis disclosure.
+    """
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("DraftRoomAnalyticsPanel")
+        self._session: LiveDraftSession | None = None
+        self._forecast = None
+        self._recommendation_mode = "auto"
 
         self._opacity_effect = QGraphicsOpacityEffect(self)
         self._opacity_effect.setOpacity(1.0)
@@ -894,150 +909,370 @@ class DraftRoomAnalyticsPanel(QFrame):
             b"opacity",
             self,
         )
-        self._fade_animation.setDuration(170)
-        self._fade_animation.setEasingCurve(
-            QEasingCurve.Type.OutCubic
-        )
+        self._fade_animation.setDuration(150)
+        self._fade_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
 
         self._build_ui()
         self.reset()
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(15, 12, 15, 12)
-        layout.setSpacing(8)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(9)
 
-        top_row = QHBoxLayout()
-        top_row.setSpacing(8)
+        # -------------------------------------------------------------
+        # HERO
+        # -------------------------------------------------------------
+        hero = QFrame()
+        hero.setObjectName("GlanceHero")
+        hero_layout = QVBoxLayout(hero)
+        hero_layout.setContentsMargins(13, 11, 13, 11)
+        hero_layout.setSpacing(5)
+
+        top = QHBoxLayout()
+        top.setSpacing(8)
+
+        self.mode_label = QLabel("GRIDIRON'S PICK")
+        self.mode_label.setObjectName("GlanceMode")
+        top.addWidget(self.mode_label)
+
+        top.addStretch(1)
+
+        self.confidence_label = QLabel("—")
+        self.confidence_label.setObjectName("GlanceConfidence")
+        top.addWidget(self.confidence_label)
+
+        hero_layout.addLayout(top)
+
+        self.player_label = QLabel("Waiting for your pick")
+        self.player_label.setObjectName("GlancePlayer")
+        self.player_label.setWordWrap(False)
+        hero_layout.addWidget(self.player_label)
+
+        self.meta_label = QLabel("Gridiron will choose automatically.")
+        self.meta_label.setObjectName("GlanceMeta")
+        hero_layout.addWidget(self.meta_label)
+
+        score_row = QHBoxLayout()
+        score_row.setSpacing(8)
+
+        self.score_label = QLabel("—")
+        self.score_label.setObjectName("GlanceScore")
+        score_row.addWidget(self.score_label)
 
         self.grade_label = QLabel("READY")
-        self.grade_label.setObjectName("AnalyticsGrade")
-        top_row.addWidget(self.grade_label)
+        self.grade_label.setObjectName("GlanceGrade")
+        score_row.addWidget(self.grade_label)
 
-        top_row.addStretch(1)
+        score_row.addStretch(1)
 
-        self.confidence_label = QLabel("CONFIDENCE —")
-        self.confidence_label.setObjectName("AnalyticsConfidence")
-        top_row.addWidget(self.confidence_label)
+        hero_layout.addLayout(score_row)
 
-        layout.addLayout(top_row)
-
-        self.player_label = QLabel("Select a player")
-        self.player_label.setObjectName("AnalyticsPlayer")
-        self.player_label.setWordWrap(False)
-        layout.addWidget(self.player_label)
-
-        self.meta_label = QLabel(
-            "Instant AI will explain the recommendation here."
-        )
-        self.meta_label.setObjectName("AnalyticsMeta")
-        self.meta_label.setWordWrap(True)
-        layout.addWidget(self.meta_label)
-
-        self.action_label = QLabel("WAITING FOR SELECTION")
+        self.action_label = QLabel("WAITING")
         self.action_label.setObjectName("AnalyticsAction")
         self.action_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.action_label)
+        hero_layout.addWidget(self.action_label)
 
-        metrics = QGridLayout()
-        metrics.setSpacing(7)
+        layout.addWidget(hero)
 
-        self.score_card = self._metric_card("DECISION")
-        self.tier_card = self._metric_card("TIER")
-        self.survival_card = self._metric_card("SURVIVES")
-        self.cost_card = self._metric_card("PASS COST")
+        # -------------------------------------------------------------
+        # WHY — no paragraph, just short glanceable reasons.
+        # -------------------------------------------------------------
+        why_title = QLabel("WHY")
+        why_title.setObjectName("AnalyticsSectionTitle")
+        layout.addWidget(why_title)
 
-        metrics.addWidget(self.score_card, 0, 0)
-        metrics.addWidget(self.tier_card, 0, 1)
-        metrics.addWidget(self.survival_card, 1, 0)
-        metrics.addWidget(self.cost_card, 1, 1)
-        layout.addLayout(metrics)
-
-        reasons_title = QLabel("WHY THIS PICK")
-        reasons_title.setObjectName("AnalyticsSectionTitle")
-        layout.addWidget(reasons_title)
-
-        self.reasons_label = QLabel(
-            "Select a candidate to generate a recommendation."
-        )
-        self.reasons_label.setObjectName("AnalyticsReasons")
+        self.reasons_label = QLabel("Waiting for analysis.")
+        self.reasons_label.setObjectName("GlanceReasons")
         self.reasons_label.setWordWrap(True)
-        layout.addWidget(self.reasons_label, 1)
+        layout.addWidget(self.reasons_label)
 
-        self.alternatives_title = QLabel("BEST ALTERNATIVES")
-        self.alternatives_title.setObjectName("AnalyticsSectionTitle")
-        layout.addWidget(self.alternatives_title)
+        # -------------------------------------------------------------
+        # PLAN B — open by default because this is draft-day useful.
+        # -------------------------------------------------------------
+        plan_title = QLabel("PLAN B")
+        plan_title.setObjectName("AnalyticsSectionTitle")
+        layout.addWidget(plan_title)
 
         self.alt_label = QLabel("—")
-        self.alt_label.setObjectName("AnalyticsAlternatives")
+        self.alt_label.setObjectName("GlanceAlternatives")
         self.alt_label.setWordWrap(True)
         layout.addWidget(self.alt_label)
 
+        # -------------------------------------------------------------
+        # ONE disclosure for all nerd-mode information.
+        # -------------------------------------------------------------
+        self.more_button = QToolButton()
+        self.more_button.setObjectName("GlanceMoreButton")
+        self.more_button.setText("More analysis")
+        self.more_button.setCheckable(True)
+        self.more_button.setChecked(False)
+        self.more_button.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+        )
+        self.more_button.setArrowType(Qt.ArrowType.RightArrow)
+        self.more_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        layout.addWidget(self.more_button)
+
+        self.more_content = QFrame()
+        self.more_content.setObjectName("GlanceMoreContent")
+        more_layout = QVBoxLayout(self.more_content)
+        more_layout.setContentsMargins(10, 9, 10, 9)
+        more_layout.setSpacing(10)
+
+        # Compact core metrics live only inside More Analysis.
+        metrics_title = QLabel("CORE METRICS")
+        metrics_title.setObjectName("GlanceAdvancedTitle")
+        more_layout.addWidget(metrics_title)
+
+        metrics = QGridLayout()
+        metrics.setSpacing(6)
+        self.tier_metric = self._metric("TIER")
+        self.survival_metric = self._metric("SURVIVES")
+        self.wait_metric = self._metric("WAIT VALUE")
+        metrics.addWidget(self.tier_metric, 0, 0)
+        metrics.addWidget(self.survival_metric, 0, 1)
+        metrics.addWidget(self.wait_metric, 0, 2)
+        more_layout.addLayout(metrics)
+
+        timeline_title = QLabel("WHAT I'M EXPECTING NEXT")
+        timeline_title.setObjectName("GlanceAdvancedTitle")
+        more_layout.addWidget(timeline_title)
+
+        self.timeline_meta = QLabel("—")
+        self.timeline_meta.setObjectName("DraftTimelineMeta")
+        self.timeline_meta.setWordWrap(True)
+        more_layout.addWidget(self.timeline_meta)
+
+        self.timeline_grid = QGridLayout()
+        self.timeline_grid.setContentsMargins(0, 0, 0, 0)
+        self.timeline_grid.setHorizontalSpacing(5)
+        self.timeline_grid.setVerticalSpacing(5)
+        more_layout.addLayout(self.timeline_grid)
+
+        self.timeline_summary = QLabel("Expected before next pick: —")
+        self.timeline_summary.setObjectName("DraftTimelineSummary")
+        self.timeline_summary.setWordWrap(True)
+        more_layout.addWidget(self.timeline_summary)
+
+        wait_title = QLabel("WHAT HAPPENS IF YOU WAIT?")
+        wait_title.setObjectName("GlanceAdvancedTitle")
+        more_layout.addWidget(wait_title)
+
+        self.wait_headline_label = QLabel("—")
+        self.wait_headline_label.setObjectName("WaitIntelHeadline")
+        more_layout.addWidget(self.wait_headline_label)
+
+        self.wait_detail_label = QLabel("—")
+        self.wait_detail_label.setObjectName("CoachAdvancedText")
+        self.wait_detail_label.setWordWrap(True)
+        more_layout.addWidget(self.wait_detail_label)
+
+        score_title = QLabel("SCORE BREAKDOWN")
+        score_title.setObjectName("GlanceAdvancedTitle")
+        more_layout.addWidget(score_title)
+
+        self.score_breakdown_label = QLabel("—")
+        self.score_breakdown_label.setObjectName("CoachAdvancedText")
+        self.score_breakdown_label.setWordWrap(True)
+        more_layout.addWidget(self.score_breakdown_label)
+
+        sim_title = QLabel("SIMULATOR")
+        sim_title.setObjectName("GlanceAdvancedTitle")
+        more_layout.addWidget(sim_title)
+
+        self.simulator_label = QLabel("—")
+        self.simulator_label.setObjectName("CoachAdvancedText")
+        self.simulator_label.setWordWrap(True)
+        more_layout.addWidget(self.simulator_label)
+
+        self.more_content.setVisible(False)
+        self.more_button.toggled.connect(self._toggle_more)
+        layout.addWidget(self.more_content)
+
+        layout.addStretch(1)
+
     @staticmethod
-    def _metric_card(title: str) -> QFrame:
+    def _metric(title: str) -> QFrame:
         frame = QFrame()
-        frame.setObjectName("AnalyticsMetricCard")
+        frame.setObjectName("CoachSignalCard")
         card_layout = QVBoxLayout(frame)
-        card_layout.setContentsMargins(9, 7, 9, 7)
-        card_layout.setSpacing(2)
+        card_layout.setContentsMargins(6, 5, 6, 5)
+        card_layout.setSpacing(1)
 
         title_label = QLabel(title)
-        title_label.setObjectName("AnalyticsMetricTitle")
+        title_label.setObjectName("CoachSignalTitle")
 
         value_label = QLabel("—")
-        value_label.setObjectName("AnalyticsMetricValue")
+        value_label.setObjectName("CoachSignalValue")
 
         card_layout.addWidget(title_label)
         card_layout.addWidget(value_label)
         frame.value_label = value_label
         return frame
 
+    def _toggle_more(self, checked: bool) -> None:
+        self.more_content.setVisible(checked)
+        self.more_button.setArrowType(
+            Qt.ArrowType.DownArrow
+            if checked
+            else Qt.ArrowType.RightArrow
+        )
+
     def _animate_refresh(self) -> None:
-        # A tiny opacity lift makes the new recommendation feel intentional
-        # without delaying interaction or creating flashy movement.
         self._fade_animation.stop()
-        self._opacity_effect.setOpacity(0.72)
-        self._fade_animation.setStartValue(0.72)
+        self._opacity_effect.setOpacity(0.78)
+        self._fade_animation.setStartValue(0.78)
         self._fade_animation.setEndValue(1.0)
         self._fade_animation.start()
 
-    def reset(self) -> None:
-        self.grade_label.setText("READY")
-        self.grade_label.setProperty("strength", "neutral")
-        self._refresh(self.grade_label)
+    def _clear_timeline(self) -> None:
+        while self.timeline_grid.count():
+            item = self.timeline_grid.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
 
-        self.confidence_label.setText("CONFIDENCE —")
-        self.player_label.setText("Select a player")
-        self.meta_label.setText(
-            "Instant AI will explain the recommendation here."
+    @staticmethod
+    def _timeline_position_color(position: str | None) -> str:
+        return {
+            "QB": "#a855f7",
+            "RB": "#34d399",
+            "WR": "#38bdf8",
+            "TE": "#fb923c",
+        }.get(position or "", "#64748b")
+
+    def _populate_timeline(self) -> None:
+        self._clear_timeline()
+
+        if self._forecast is None:
+            self.timeline_meta.setText("No next-pick forecast available.")
+            self.timeline_summary.setText("Expected before next pick: —")
+            return
+
+        self.timeline_meta.setText(
+            f"Pick {self._forecast.current_pick} → "
+            f"{self._forecast.next_user_pick}  •  "
+            f"{self._forecast.picks_between} picks between"
         )
 
-        self.score_card.value_label.setText("—")
-        self.tier_card.value_label.setText("—")
-        self.survival_card.value_label.setText("—")
-        self.cost_card.value_label.setText("—")
+        for index, pick_forecast in enumerate(
+            tuple(getattr(self._forecast, "pick_forecasts", ()))
+        ):
+            row = index // 5
+            column = index % 5
+            position = pick_forecast.most_likely_position or "—"
+            probability = float(pick_forecast.probability or 0.0)
 
-        self.action_label.setText("WAITING FOR SELECTION")
+            chip = QFrame()
+            chip.setObjectName("DraftTimelineChip")
+            chip_layout = QVBoxLayout(chip)
+            chip_layout.setContentsMargins(5, 4, 5, 4)
+            chip_layout.setSpacing(1)
+
+            pick_label = QLabel(str(pick_forecast.overall_pick))
+            pick_label.setObjectName("DraftTimelinePick")
+            pick_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            pos_label = QLabel(position)
+            pos_label.setObjectName("DraftTimelinePosition")
+            pos_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            pos_label.setStyleSheet(
+                f"color: {self._timeline_position_color(position)};"
+            )
+
+            prob_label = QLabel(f"{probability:.0%}")
+            prob_label.setObjectName("DraftTimelineProbability")
+            prob_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            chip_layout.addWidget(pick_label)
+            chip_layout.addWidget(pos_label)
+            chip_layout.addWidget(prob_label)
+
+            distribution = " • ".join(
+                f"{pos} {prob:.0%}"
+                for pos, prob in pick_forecast.position_probabilities
+            )
+            chip.setToolTip(
+                f"Pick {pick_forecast.overall_pick}\n"
+                f"Team {pick_forecast.team_number}\n"
+                f"Most likely: {position} ({probability:.0%})\n"
+                f"{distribution}"
+            )
+
+            self.timeline_grid.addWidget(chip, row, column)
+
+        by_position = {
+            item.position: item
+            for item in self._forecast.position_forecasts
+        }
+        parts = []
+        for position in ("QB", "RB", "WR", "TE"):
+            forecast = by_position.get(position)
+            if forecast is not None:
+                parts.append(f"{position} {forecast.expected_picks:.1f}")
+
+        self.timeline_summary.setText(
+            "Expected before next pick:  " + "  •  ".join(parts)
+            if parts
+            else "Expected before next pick: —"
+        )
+
+    def reset(self) -> None:
+        self.mode_label.setText("GRIDIRON'S PICK")
+        self.confidence_label.setText("—")
+        self.player_label.setText("Waiting for your pick")
+        self.meta_label.setText("Gridiron will choose automatically.")
+        self.score_label.setText("—")
+        self.grade_label.setText("READY")
+
+        self.action_label.setText("WAITING")
         self.action_label.setProperty("action", "neutral")
         self._refresh(self.action_label)
 
-        self.reasons_label.setText(
-            "Select a candidate to generate a recommendation."
-        )
+        self.reasons_label.setText("Waiting for analysis.")
         self.alt_label.setText("—")
+
+        self.tier_metric.value_label.setText("—")
+        self.survival_metric.value_label.setText("—")
+        self.wait_metric.value_label.setText("—")
+
+        self._clear_timeline()
+        self.timeline_meta.setText("No next-pick forecast available.")
+        self.timeline_summary.setText("Expected before next pick: —")
+        self.wait_headline_label.setText("—")
+        self.wait_detail_label.setText("—")
+        self.score_breakdown_label.setText("—")
+        self.simulator_label.setText("—")
+
+        self.more_button.setChecked(False)
+
+    def set_context(
+        self,
+        session: LiveDraftSession | None,
+        forecast=None,
+        recommendation_mode: str = "auto",
+    ) -> None:
+        self._session = session
+        self._forecast = forecast
+        self._recommendation_mode = recommendation_mode
+        self._populate_timeline()
 
     def set_running(self, player_count: int) -> None:
         self._animate_refresh()
-        self.grade_label.setText("ANALYZING")
-        self.grade_label.setProperty("strength", "neutral")
-        self._refresh(self.grade_label)
-
-        self.player_label.setText("Comparing candidates…")
-        self.meta_label.setText(
-            f"Evaluating {player_count} selected "
-            f"{'player' if player_count == 1 else 'players'}."
+        self.mode_label.setText(
+            "GRIDIRON'S PICK"
+            if self._recommendation_mode == "auto"
+            else "WHAT-IF"
         )
-        self.action_label.setText("RUNNING ANALYSIS")
+        self.player_label.setText("Analyzing…")
+        self.meta_label.setText(
+            f"Comparing {player_count} "
+            f"{'candidate' if player_count == 1 else 'candidates'}."
+        )
+        self.score_label.setText("—")
+        self.grade_label.setText("WORKING")
+        self.action_label.setText("ANALYZING")
         self.action_label.setProperty("action", "neutral")
         self._refresh(self.action_label)
 
@@ -1048,6 +1283,7 @@ class DraftRoomAnalyticsPanel(QFrame):
             return
 
         self._animate_refresh()
+        self._populate_timeline()
 
         top = recommendations[0]
         explanation = RecommendationExplanationBuilder.build(
@@ -1055,40 +1291,25 @@ class DraftRoomAnalyticsPanel(QFrame):
             recommendations[1:],
         )
 
-        self.grade_label.setText(
-            f"{'★' * explanation.stars}  {explanation.headline}"
+        self.mode_label.setText(
+            "GRIDIRON'S PICK"
+            if self._recommendation_mode == "auto"
+            else "WHAT-IF"
         )
-        self.grade_label.setProperty(
-            "strength",
-            self._strength_property(top.score),
-        )
-        self._refresh(self.grade_label)
-
-        self.confidence_label.setText(
-            f"CONFIDENCE {explanation.confidence_text}"
-        )
-
+        self.confidence_label.setText(f"{top.confidence}% CONFIDENCE")
         self.player_label.setText(top.player_name)
 
-        strategy = str(
-            getattr(top, "primary_strategy", "") or ""
-        ).strip()
-        meta_bits = [
-            str(top.position).upper(),
-            str(top.grade),
-        ]
+        strategy = str(getattr(top, "primary_strategy", "") or "").strip()
+        meta = [str(top.position).upper()]
+        team = str(getattr(top, "team", "") or "").strip()
+        if team:
+            meta.append(team)
         if strategy:
-            meta_bits.append(strategy)
-        self.meta_label.setText("  •  ".join(meta_bits))
+            meta.append(strategy)
+        self.meta_label.setText("  •  ".join(meta))
 
-        self.score_card.value_label.setText(explanation.score_text)
-        self.tier_card.value_label.setText(explanation.tier_text)
-        self.survival_card.value_label.setText(
-            explanation.survival_text
-        )
-        self.cost_card.value_label.setText(
-            explanation.pass_cost_text
-        )
+        self.score_label.setText(explanation.score_text)
+        self.grade_label.setText(explanation.headline)
 
         self.action_label.setText(explanation.action)
         self.action_label.setProperty(
@@ -1097,32 +1318,99 @@ class DraftRoomAnalyticsPanel(QFrame):
         )
         self._refresh(self.action_label)
 
+        # Keep only three compact reasons by default and shorten common verbose
+        # engine explanations into draft-at-a-glance fragments.
+        reasons = [
+            self._compact_reason(reason)
+            for reason in explanation.reasons[:3]
+        ]
         self.reasons_label.setText(
-            "\n".join(
-                f"✓  {reason}"
-                for reason in explanation.reasons
-            )
-            if explanation.reasons
-            else "No strong differentiator was produced for this pick."
+            "\n".join(f"✓  {reason}" for reason in reasons)
+            if reasons
+            else "No single factor dominates this pick."
         )
 
         self.alt_label.setText(
-            "\n".join(explanation.alternatives)
+            "\n".join(self._compact_alternative(line) for line in explanation.alternatives[:3])
             if explanation.alternatives
-            else "No additional analyzed candidates."
+            else "No close alternative."
         )
 
+        self.tier_metric.value_label.setText(explanation.tier_text)
+        self.survival_metric.value_label.setText(explanation.survival_text)
+        self.wait_metric.value_label.setText(explanation.pass_cost_text)
+
+        wait_view = CostOfWaitingBuilder.build(
+            top,
+            current_pick=(
+                self._session.current_pick
+                if self._session is not None
+                else None
+            ),
+            next_pick=(
+                self._session.next_user_pick
+                if self._session is not None
+                else None
+            ),
+        )
+        self.wait_headline_label.setText(wait_view.headline)
+        self.wait_headline_label.setProperty("risk", wait_view.risk_level)
+        self._refresh(self.wait_headline_label)
+        self.wait_detail_label.setText(
+            f"{wait_view.pick_window}\n"
+            f"{wait_view.point_swing_detail}\n"
+            f"{wait_view.take_path_text}\n"
+            f"{wait_view.pass_path_text}"
+        )
+
+        component_lines = []
+        for name, earned, maximum in top.score_breakdown.component_items():
+            component_lines.append(
+                f"{name:<18} {earned:>4.1f} / {maximum:.0f}"
+            )
+        self.score_breakdown_label.setText("\n".join(component_lines))
+
+        if self._forecast is None:
+            self.simulator_label.setText(
+                "Final pick: no next-pick forecast required."
+            )
+        else:
+            position_forecast = self._forecast.position(top.position)
+            run_text = (
+                f"{position_forecast.expected_picks:.1f} expected {top.position} picks • "
+                f"{position_forecast.run_probability:.0%} run probability"
+                if position_forecast is not None
+                else "No position-run forecast."
+            )
+            self.simulator_label.setText(
+                f"{self._forecast.simulations} simulations • "
+                f"{self._forecast.picks_between} picks until your next turn\n"
+                f"{run_text}"
+            )
+
     @staticmethod
-    def _strength_property(score: float) -> str:
-        if score >= 90:
-            return "elite"
-        if score >= 80:
-            return "strong"
-        if score >= 70:
-            return "good"
-        if score >= 60:
-            return "solid"
-        return "low"
+    def _compact_reason(reason: str) -> str:
+        text = str(reason).strip().rstrip(".")
+        replacements = (
+            ("Last available player in ", "Last "),
+            ("Only ", ""),
+            (" chance he survives to your next pick", " survives to next pick"),
+            ("Run pressure: ", ""),
+            (" expected ", " "),
+            (" picks before your next turn", "s projected before next pick"),
+            ("Taking him now projects ", "+"),
+            (" more roster pts than the pass path", " pts vs waiting"),
+            ("Simulator expects ", ""),
+        )
+        for old, new in replacements:
+            text = text.replace(old, new)
+        return text
+
+    @staticmethod
+    def _compact_alternative(line: str) -> str:
+        text = str(line).strip()
+        # Builder emits "#2  Name  •  82/100 • 40% survives".
+        return text.replace("  •  ", "   ")
 
     @staticmethod
     def _action_property(action: str) -> str:
@@ -1174,14 +1462,16 @@ class DraftRoomWorkspace(QWidget):
         self.splitter.addWidget(self.roster)
         self.splitter.addWidget(self.analytics)
 
-        self.splitter.setStretchFactor(0, 5)
-        self.splitter.setStretchFactor(1, 2)
-        self.splitter.setStretchFactor(2, 3)
-        self.splitter.setSizes([760, 305, 455])
+        # The AI panel is the product centerpiece. Keep Available Players
+        # useful without letting its toolbar dictate the entire workspace width.
+        self.splitter.setStretchFactor(0, 41)
+        self.splitter.setStretchFactor(1, 18)
+        self.splitter.setStretchFactor(2, 41)
+        self.splitter.setSizes([620, 270, 630])
 
-        self.players.setMinimumWidth(500)
-        self.roster.setMinimumWidth(230)
-        self.analytics.setMinimumWidth(330)
+        self.players.setMinimumWidth(550)
+        self.roster.setMinimumWidth(225)
+        self.analytics.setMinimumWidth(470)
 
         layout.addWidget(self.splitter)
 
@@ -1190,9 +1480,12 @@ class DraftRoomWorkspace(QWidget):
         session: LiveDraftSession | None,
         approved_players: set[str],
         recommendations=(),
+        forecast=None,
+        recommendation_mode: str = "auto",
     ) -> None:
         self.players.refresh(session, approved_players)
         self.roster.refresh(session)
+        self.analytics.set_context(session, forecast, recommendation_mode)
         self.analytics.set_recommendations(recommendations)
 
     def set_analysis_running(self, player_count: int) -> None:

@@ -44,6 +44,10 @@ class Recommendation:
     strategy_fit_label: str
     strategy_fit_explanation: str
 
+    expected_position_picks: float
+    position_run_probability: float
+    run_pressure_score: float
+
     score_breakdown: RecommendationScore
 
     grade: str

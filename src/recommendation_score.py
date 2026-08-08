@@ -18,6 +18,7 @@ class RecommendationScore:
     tier_drop: float
     opportunity_cost: float
     strategy_fit: float
+    run_pressure: float
     preference: float
 
     confidence: int
@@ -37,18 +38,20 @@ class RecommendationScore:
             + self.tier_drop
             + self.opportunity_cost
             + self.strategy_fit
+            + self.run_pressure
             + self.preference
         )
 
     def component_items(self) -> tuple[tuple[str, float, float], ...]:
         """Return display name, earned points, and maximum points."""
         return (
-            ("Projection", self.projection, 28.0),
-            ("Wait Risk", self.wait_risk, 15.0),
-            ("Roster Fit", self.roster_fit, 15.0),
-            ("Scarcity", self.scarcity, 8.0),
-            ("Tier Drop", self.tier_drop, 10.0),
-            ("Opportunity Cost", self.opportunity_cost, 9.0),
-            ("Strategy Fit", self.strategy_fit, 10.0),
+            ("Projection", self.projection, 24.0),
+            ("Wait Risk", self.wait_risk, 13.0),
+            ("Roster Fit", self.roster_fit, 14.0),
+            ("Scarcity", self.scarcity, 7.0),
+            ("Tier Drop", self.tier_drop, 8.0),
+            ("Opportunity Cost", self.opportunity_cost, 8.0),
+            ("Strategy Fit", self.strategy_fit, 9.0),
+            ("Position Run", self.run_pressure, 12.0),
             ("My Guy", self.preference, 5.0),
         )

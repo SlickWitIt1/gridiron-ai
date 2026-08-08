@@ -40,13 +40,14 @@ class RecommendationEngine:
     RB_DEPTH_BONUS = 5.0
     WR_DEPTH_BONUS = 5.0
 
-    PROJECTION_MAX = 28.0
-    WAIT_RISK_MAX = 15.0
-    ROSTER_FIT_MAX = 15.0
-    SCARCITY_MAX = 8.0
-    TIER_DROP_MAX = 10.0
-    OPPORTUNITY_COST_MAX = 9.0
-    STRATEGY_FIT_MAX = 10.0
+    PROJECTION_MAX = 24.0
+    WAIT_RISK_MAX = 13.0
+    ROSTER_FIT_MAX = 14.0
+    SCARCITY_MAX = 7.0
+    TIER_DROP_MAX = 8.0
+    OPPORTUNITY_COST_MAX = 8.0
+    STRATEGY_FIT_MAX = 9.0
+    RUN_PRESSURE_MAX = 12.0
     PREFERENCE_MAX = 5.0
 
     def __init__(
@@ -382,12 +383,33 @@ class RecommendationEngine:
             is_last_in_tier=True,
         )
 
+    def _run_pressure(self, *, forecast, position: str) -> tuple[float, float, float]:
+        if forecast is None:
+            return 0.0, 0.0, 0.0
+        position_forecast = forecast.position(position)
+        if position_forecast is None:
+            return 0.0, 0.0, 0.0
+
+        expected = float(position_forecast.expected_picks)
+        run_probability = float(position_forecast.run_probability)
+        picks_between = max(1, int(forecast.picks_between))
+        volume_share = self._clamp(expected / picks_between, 0.0, 1.0)
+        pressure = self.RUN_PRESSURE_MAX * (
+            run_probability * 0.65 + volume_share * 0.35
+        )
+        return (
+            self._clamp(pressure, 0.0, self.RUN_PRESSURE_MAX),
+            expected,
+            run_probability,
+        )
+
     def recommend(
         self,
         wait_results: Iterable[WaitAnalysis],
         user_team: Team,
         available_player_names: Iterable[str] | None = None,
         strategy_result: StrategyResult | None = None,
+        forecast=None,
     ) -> list[Recommendation]:
         available_names = (
             set(available_player_names)
@@ -440,6 +462,9 @@ class RecommendationEngine:
                     tier_info=tier_info,
                 )
             )
+            run_pressure_component, expected_position_picks, position_run_probability = (
+                self._run_pressure(forecast=forecast, position=position)
+            )
 
             prepared_results.append(
                 {
@@ -456,6 +481,9 @@ class RecommendationEngine:
                     "strategy_fit_score": strategy_fit_score,
                     "strategy_fit_label": strategy_fit_label,
                     "strategy_fit_explanation": strategy_fit_explanation,
+                    "run_pressure_component": run_pressure_component,
+                    "expected_position_picks": expected_position_picks,
+                    "position_run_probability": position_run_probability,
                 }
             )
 
@@ -478,6 +506,9 @@ class RecommendationEngine:
             strategy_fit_score = float(item["strategy_fit_score"])
             strategy_fit_label = str(item["strategy_fit_label"])
             strategy_fit_explanation = str(item["strategy_fit_explanation"])
+            run_pressure_component = float(item["run_pressure_component"])
+            expected_position_picks = float(item["expected_position_picks"])
+            position_run_probability = float(item["position_run_probability"])
 
             # Score projection value against a stable replacement-level
             # scale. This avoids a player's score changing simply because
@@ -565,6 +596,7 @@ class RecommendationEngine:
                 tier_drop_component,
                 opportunity_cost_component,
                 strategy_fit_component,
+                run_pressure_component,
                 preference_component,
             )
 
@@ -674,6 +706,13 @@ class RecommendationEngine:
                     f"your next pick."
                 )
 
+            if expected_position_picks >= 2.5 or position_run_probability >= 0.45:
+                reasons.append(
+                    f"Simulator expects {expected_position_picks:.1f} {position} "
+                    f"picks before your next turn "
+                    f"({position_run_probability:.0%} run probability)."
+                )
+
             score_breakdown = RecommendationScore(
                 total=total_score,
                 projection=projection_component,
@@ -683,6 +722,7 @@ class RecommendationEngine:
                 tier_drop=tier_drop_component,
                 opportunity_cost=opportunity_cost_component,
                 strategy_fit=strategy_fit_component,
+                run_pressure=run_pressure_component,
                 preference=preference_component,
                 confidence=confidence,
             )
@@ -754,6 +794,9 @@ class RecommendationEngine:
                     strategy_fit_score=strategy_fit_component,
                     strategy_fit_label=strategy_fit_label,
                     strategy_fit_explanation=strategy_fit_explanation,
+                    expected_position_picks=expected_position_picks,
+                    position_run_probability=position_run_probability,
+                    run_pressure_score=run_pressure_component,
                     score_breakdown=score_breakdown,
                     grade=self._grade(total_score),
                     action=self._action(survival_probability),
