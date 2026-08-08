@@ -58,9 +58,25 @@ class DraftBoardWidget(QWidget):
 
         progress_stack = QVBoxLayout()
         progress_stack.setSpacing(4)
+
+        progress_meta = QHBoxLayout()
+        progress_meta.setContentsMargins(0, 0, 0, 0)
+        progress_meta.setSpacing(8)
+
         progress_title = QLabel("DRAFT PROGRESS")
         progress_title.setObjectName("DraftRoomMetaTitle")
-        progress_stack.addWidget(progress_title)
+        progress_meta.addWidget(progress_title)
+
+        progress_meta.addStretch(1)
+
+        self.progress_percent_label = QLabel("0%")
+        self.progress_percent_label.setObjectName("DraftRoomProgressPercent")
+        self.progress_percent_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        progress_meta.addWidget(self.progress_percent_label)
+
+        progress_stack.addLayout(progress_meta)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setObjectName("DraftRoomProgress")
@@ -108,11 +124,10 @@ class DraftBoardWidget(QWidget):
         legend_layout = QHBoxLayout(legend)
         legend_layout.setContentsMargins(0, 0, 0, 0)
         legend_layout.setSpacing(12)
+        legend_layout.addWidget(self._legend_item("●", "QB", "#a855f7"))
         legend_layout.addWidget(self._legend_item("●", "RB", "#34d399"))
         legend_layout.addWidget(self._legend_item("●", "WR", "#38bdf8"))
-        legend_layout.addWidget(self._legend_item("●", "QB", "#a855f7"))
         legend_layout.addWidget(self._legend_item("●", "TE", "#fb923c"))
-        legend_layout.addWidget(self._legend_item("★", "My Guy", "#facc15"))
         footer_layout.addWidget(legend)
 
         divider = QFrame()
@@ -228,6 +243,7 @@ class DraftBoardWidget(QWidget):
             self._current_pick_overall = None
             self.summary_label.setText("No active draft.")
             self.progress_bar.setValue(0)
+            self.progress_percent_label.setText("0%")
             self.on_clock_label.setText("WAITING FOR DRAFT")
             self.on_clock_label.setProperty("userTurn", "false")
             self._refresh_widget(self.on_clock_label)
@@ -259,6 +275,8 @@ class DraftBoardWidget(QWidget):
             f"Your slot: {session.user_team_number}"
         )
         self.progress_bar.setValue(completed)
+        progress_percent = round((completed / 160) * 100)
+        self.progress_percent_label.setText(f"{progress_percent}%")
 
         current_team = session.current_team_number
         if current_team is None:

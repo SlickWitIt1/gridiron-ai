@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QTimer, Qt, Signal
-from PySide6.QtGui import QColor, QIcon, QPixmap
+from PySide6.QtCore import QEvent, QEasingCurve, QPropertyAnimation, QTimer, Qt, Signal
+from PySide6.QtGui import QColor, QCursor, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
     QFrame,
+    QGraphicsOpacityEffect,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
@@ -23,6 +24,7 @@ from asset_manager import DEFAULT_ASSET_MANAGER, short_player_name
 from live_draft import LiveDraftSession
 from preferences import normalize_name
 from projection_loader import load_projections
+from recommendation_explanation import RecommendationExplanationBuilder
 from team import base_position
 
 
@@ -94,15 +96,9 @@ class DraftRoomPlayerBrowser(QFrame):
         top = QHBoxLayout()
         top.setSpacing(8)
 
-        title_stack = QVBoxLayout()
-        title_stack.setSpacing(0)
         title = QLabel("AVAILABLE PLAYERS")
         title.setObjectName("WorkspaceTitle")
-        self.context_label = QLabel("Select the player drafted.")
-        self.context_label.setObjectName("WorkspaceSubtle")
-        title_stack.addWidget(title)
-        title_stack.addWidget(self.context_label)
-        top.addLayout(title_stack)
+        top.addWidget(title)
 
         top.addStretch(1)
 
@@ -110,9 +106,11 @@ class DraftRoomPlayerBrowser(QFrame):
         self.search.setObjectName("WorkspaceSearch")
         self.search.setPlaceholderText("Find player…")
         self.search.setClearButtonEnabled(True)
-        self.search.setMinimumWidth(210)
+        self.search.setMinimumWidth(165)
+        self.search.setMaximumWidth(195)
         self.search.textChanged.connect(self.refresh_table)
         top.addWidget(self.search)
+        top.addSpacing(10)
 
         self.position_group = QButtonGroup(self)
         self.position_group.setExclusive(True)
@@ -147,6 +145,8 @@ class DraftRoomPlayerBrowser(QFrame):
         self.table.setWordWrap(False)
         self.table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.table.setIconSize(QPixmap(30, 30).size())
+        self.table.viewport().setMouseTracking(True)
+        self.table.viewport().installEventFilter(self)
 
         self._configure_table_columns()
         self.table.itemSelectionChanged.connect(self._selection_changed)
@@ -189,25 +189,11 @@ class DraftRoomPlayerBrowser(QFrame):
         self._approved_players = set(approved_players)
 
         if session is None:
-            self.context_label.setText("No active draft.")
             self._known_available_names.clear()
             self.undo_button.setEnabled(False)
             self.redo_button.setEnabled(False)
             self.refresh_table()
             return
-        elif session.is_complete:
-            self.context_label.setText("Draft complete.")
-        elif session.is_user_turn:
-            self.context_label.setText(
-                f"YOU'RE ON THE CLOCK • PICK {session.current_pick} • "
-                "Select candidates to analyze or record your pick."
-            )
-        else:
-            self.context_label.setText(
-                f"TEAM {session.current_team_number} ON CLOCK • PICK {session.current_pick} • "
-                "Double-click the player they drafted."
-            )
-
         self.undo_button.setEnabled(bool(session.draft_results))
         self.redo_button.setEnabled(session.can_redo)
         self._refresh_position_tabs()
@@ -271,6 +257,30 @@ class DraftRoomPlayerBrowser(QFrame):
             self._populate_player_row(visible_before, player)
         finally:
             self.table.blockSignals(False)
+
+    def eventFilter(self, watched, event) -> bool:
+        if watched is self.table.viewport():
+            event_type = event.type()
+
+            if event_type in {
+                QEvent.Type.MouseMove,
+                QEvent.Type.Enter,
+            }:
+                pos = self.table.viewport().mapFromGlobal(QCursor.pos())
+                index = self.table.indexAt(pos)
+                cursor = (
+                    Qt.CursorShape.PointingHandCursor
+                    if index.isValid()
+                    else Qt.CursorShape.ArrowCursor
+                )
+                self.table.viewport().setCursor(cursor)
+
+            elif event_type == QEvent.Type.Leave:
+                self.table.viewport().setCursor(
+                    Qt.CursorShape.ArrowCursor
+                )
+
+        return super().eventFilter(watched, event)
 
     def _set_position_filter(self, position_key: str) -> None:
         self._active_position = position_key
@@ -437,7 +447,7 @@ class DraftRoomPlayerBrowser(QFrame):
         # QTableWidget because Qt keeps measuring cell contents. Keep PLAYER fluid
         # and use predictable widths for the numeric/stat columns instead.
         widths = {
-            "rank": 42,
+            "rank": 56,
             "adp": 54,
             "bye": 46,
             "projection": 62,
@@ -517,6 +527,20 @@ class DraftRoomPlayerBrowser(QFrame):
         self._headshot_icon_cache[player_name] = icon
         return icon
 
+    @staticmethod
+    def _tier_palette(tier: int | None) -> tuple[str, str]:
+        """Subtle tier colors: useful at a glance without turning the table into a rainbow."""
+        palettes = {
+            1: ("#bbf7d0", "#123022"),
+            2: ("#bae6fd", "#12324a"),
+            3: ("#fde68a", "#3f3510"),
+            4: ("#fed7aa", "#422d15"),
+            5: ("#fecdd3", "#40202a"),
+        }
+        if isinstance(tier, int) and tier > 0:
+            return palettes.get(tier, ("#cbd5e1", "#263244"))
+        return "#94a3b8", "#1b2534"
+
     def _populate_player_row(self, row: int, player) -> None:
         position = base_position(player.position).upper()
         projection = self._projections.get(normalize_name(player.name))
@@ -547,7 +571,15 @@ class DraftRoomPlayerBrowser(QFrame):
             elif key == "projection":
                 item = QTableWidgetItem(f"{projected_points:.1f}" if isinstance(projected_points, (int, float)) else "—")
             elif key == "tier":
-                item = QTableWidgetItem(str(getattr(player, "tier", "") or "—"))
+                tier = getattr(player, "tier", None)
+                item = QTableWidgetItem(str(tier or "—"))
+                tier_fg, tier_bg = self._tier_palette(tier)
+                item.setForeground(QColor(tier_fg))
+                item.setBackground(QColor(tier_bg))
+                if isinstance(tier, int) and tier > 0:
+                    item.setToolTip(
+                        f"Tier {tier} — lower tier numbers indicate stronger projection groups."
+                    )
             elif key == "position":
                 item = QTableWidgetItem(f"{player.position}  {player.team}")
                 item.setForeground(QColor(POSITION_COLORS.get(position, "#e2e8f0")))
@@ -677,6 +709,7 @@ class DraftRoomRosterPanel(QFrame):
         super().__init__(parent)
         self.setObjectName("DraftRoomRosterPanel")
         self._slot_rows: list[tuple[QLabel, QLabel, QLabel]] = []
+        self._projections = load_projections()
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -738,6 +771,33 @@ class DraftRoomRosterPanel(QFrame):
         self._slot_rows.append((slot_label, player_label, team_label))
         return frame
 
+    def _projected_points(self, player) -> float:
+        projection = self._projections.get(normalize_name(player.name))
+        if projection is None:
+            return float("-inf")
+        return float(projection.fantasy_points)
+
+    def _best_player_index(
+        self,
+        players: list,
+        eligible_positions: tuple[str, ...] | set[str],
+    ) -> int | None:
+        eligible = [
+            (index, player)
+            for index, player in enumerate(players)
+            if base_position(player.position).upper() in eligible_positions
+        ]
+        if not eligible:
+            return None
+
+        return max(
+            eligible,
+            key=lambda pair: (
+                self._projected_points(pair[1]),
+                -int(getattr(pair[1], "rank", 9999) or 9999),
+            ),
+        )[0]
+
     def refresh(self, session: LiveDraftSession | None) -> None:
         # Clear every slot first.
         for _slot_label, player_label, team_label in self._slot_rows:
@@ -759,52 +819,49 @@ class DraftRoomRosterPanel(QFrame):
         remaining = list(user_players)
         assignments: list[object | None] = []
 
-        # Fill strict starters in lineup order, but delay FLEX until base RB/WR/TE slots are handled.
+        # Starter slots always use the strongest projected eligible players.
+        # That keeps the visible lineup optimized instead of preserving draft order.
         strict_slots = self.STARTER_SLOTS[:6]
         for _slot_name, eligible_positions in strict_slots:
-            chosen_index = next(
-                (
-                    index
-                    for index, player in enumerate(remaining)
-                    if base_position(player.position).upper() in eligible_positions
-                ),
-                None,
+            chosen_index = self._best_player_index(
+                remaining,
+                eligible_positions,
             )
             if chosen_index is None:
                 assignments.append(None)
             else:
                 assignments.append(remaining.pop(chosen_index))
 
-        # FLEX: first remaining RB/WR/TE in draft order.
-        flex_index = next(
-            (
-                index
-                for index, player in enumerate(remaining)
-                if base_position(player.position).upper() in {"RB", "WR", "TE"}
-            ),
-            None,
+        # FLEX is the highest-projected remaining RB/WR/TE after the base
+        # QB/RB/RB/WR/WR/TE starters have been filled.
+        flex_index = self._best_player_index(
+            remaining,
+            {"RB", "WR", "TE"},
         )
         if flex_index is None:
             assignments.append(None)
         else:
             assignments.append(remaining.pop(flex_index))
 
-        # D/ST then K.
+        # D/ST then K use their dedicated starter slots.
         for wanted in ("DST", "K"):
-            chosen_index = next(
-                (
-                    index
-                    for index, player in enumerate(remaining)
-                    if base_position(player.position).upper() == wanted
-                ),
-                None,
+            chosen_index = self._best_player_index(
+                remaining,
+                {wanted},
             )
             if chosen_index is None:
                 assignments.append(None)
             else:
                 assignments.append(remaining.pop(chosen_index))
 
-        # Bench preserves draft order after starters/FLEX are assigned.
+        # Bench is an at-a-glance depth chart: highest projected first.
+        remaining.sort(
+            key=lambda player: (
+                self._projected_points(player),
+                -int(getattr(player, "rank", 9999) or 9999),
+            ),
+            reverse=True,
+        )
         assignments.extend(remaining[: self.BENCH_SLOTS])
         while len(assignments) < len(self._slot_rows):
             assignments.append(None)
@@ -822,64 +879,96 @@ class DraftRoomRosterPanel(QFrame):
 
 
 class DraftRoomAnalyticsPanel(QFrame):
-    """Compact Gridiron AI decision surface for the unified Draft Room."""
+    """Draft-day recommendation card powered only by engine-produced facts."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("DraftRoomAnalyticsPanel")
+
+        self._opacity_effect = QGraphicsOpacityEffect(self)
+        self._opacity_effect.setOpacity(1.0)
+        self.setGraphicsEffect(self._opacity_effect)
+
+        self._fade_animation = QPropertyAnimation(
+            self._opacity_effect,
+            b"opacity",
+            self,
+        )
+        self._fade_animation.setDuration(170)
+        self._fade_animation.setEasingCurve(
+            QEasingCurve.Type.OutCubic
+        )
+
         self._build_ui()
         self.reset()
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 10, 14, 10)
+        layout.setContentsMargins(15, 12, 15, 12)
         layout.setSpacing(8)
 
-        eyebrow = QLabel("GRIDIRON AI")
-        eyebrow.setObjectName("AnalyticsEyebrow")
-        layout.addWidget(eyebrow)
+        top_row = QHBoxLayout()
+        top_row.setSpacing(8)
 
-        self.player_label = QLabel("Ready when you are")
+        self.grade_label = QLabel("READY")
+        self.grade_label.setObjectName("AnalyticsGrade")
+        top_row.addWidget(self.grade_label)
+
+        top_row.addStretch(1)
+
+        self.confidence_label = QLabel("CONFIDENCE —")
+        self.confidence_label.setObjectName("AnalyticsConfidence")
+        top_row.addWidget(self.confidence_label)
+
+        layout.addLayout(top_row)
+
+        self.player_label = QLabel("Select a player")
         self.player_label.setObjectName("AnalyticsPlayer")
         self.player_label.setWordWrap(False)
         layout.addWidget(self.player_label)
 
-        self.meta_label = QLabel("Select candidates and run an analysis.")
+        self.meta_label = QLabel(
+            "Instant AI will explain the recommendation here."
+        )
         self.meta_label.setObjectName("AnalyticsMeta")
         self.meta_label.setWordWrap(True)
         layout.addWidget(self.meta_label)
 
-        metrics = QGridLayout()
-        metrics.setSpacing(7)
-
-        self.score_card = self._metric_card("DECISION SCORE")
-        self.survival_card = self._metric_card("SURVIVES")
-        self.cost_card = self._metric_card("COST TO WAIT")
-        self.fit_card = self._metric_card("ROSTER FIT")
-
-        metrics.addWidget(self.score_card, 0, 0)
-        metrics.addWidget(self.survival_card, 0, 1)
-        metrics.addWidget(self.cost_card, 1, 0)
-        metrics.addWidget(self.fit_card, 1, 1)
-        layout.addLayout(metrics)
-
-        self.action_label = QLabel("ANALYZE PLAYERS")
+        self.action_label = QLabel("WAITING FOR SELECTION")
         self.action_label.setObjectName("AnalyticsAction")
         self.action_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.action_label)
+
+        metrics = QGridLayout()
+        metrics.setSpacing(7)
+
+        self.score_card = self._metric_card("DECISION")
+        self.tier_card = self._metric_card("TIER")
+        self.survival_card = self._metric_card("SURVIVES")
+        self.cost_card = self._metric_card("PASS COST")
+
+        metrics.addWidget(self.score_card, 0, 0)
+        metrics.addWidget(self.tier_card, 0, 1)
+        metrics.addWidget(self.survival_card, 1, 0)
+        metrics.addWidget(self.cost_card, 1, 1)
+        layout.addLayout(metrics)
 
         reasons_title = QLabel("WHY THIS PICK")
         reasons_title.setObjectName("AnalyticsSectionTitle")
         layout.addWidget(reasons_title)
 
         self.reasons_label = QLabel(
-            "Your top recommendation and the strongest reasons will appear here."
+            "Select a candidate to generate a recommendation."
         )
         self.reasons_label.setObjectName("AnalyticsReasons")
         self.reasons_label.setWordWrap(True)
         layout.addWidget(self.reasons_label, 1)
 
-        self.alt_label = QLabel("")
+        self.alternatives_title = QLabel("BEST ALTERNATIVES")
+        self.alternatives_title.setObjectName("AnalyticsSectionTitle")
+        layout.addWidget(self.alternatives_title)
+
+        self.alt_label = QLabel("—")
         self.alt_label.setObjectName("AnalyticsAlternatives")
         self.alt_label.setWordWrap(True)
         layout.addWidget(self.alt_label)
@@ -894,6 +983,7 @@ class DraftRoomAnalyticsPanel(QFrame):
 
         title_label = QLabel(title)
         title_label.setObjectName("AnalyticsMetricTitle")
+
         value_label = QLabel("—")
         value_label.setObjectName("AnalyticsMetricValue")
 
@@ -902,24 +992,51 @@ class DraftRoomAnalyticsPanel(QFrame):
         frame.value_label = value_label
         return frame
 
+    def _animate_refresh(self) -> None:
+        # A tiny opacity lift makes the new recommendation feel intentional
+        # without delaying interaction or creating flashy movement.
+        self._fade_animation.stop()
+        self._opacity_effect.setOpacity(0.72)
+        self._fade_animation.setStartValue(0.72)
+        self._fade_animation.setEndValue(1.0)
+        self._fade_animation.start()
+
     def reset(self) -> None:
-        self.player_label.setText("Ready when you are")
-        self.meta_label.setText("Select candidates and run an analysis.")
+        self.grade_label.setText("READY")
+        self.grade_label.setProperty("strength", "neutral")
+        self._refresh(self.grade_label)
+
+        self.confidence_label.setText("CONFIDENCE —")
+        self.player_label.setText("Select a player")
+        self.meta_label.setText(
+            "Instant AI will explain the recommendation here."
+        )
+
         self.score_card.value_label.setText("—")
+        self.tier_card.value_label.setText("—")
         self.survival_card.value_label.setText("—")
         self.cost_card.value_label.setText("—")
-        self.fit_card.value_label.setText("—")
-        self.action_label.setText("ANALYZE PLAYERS")
+
+        self.action_label.setText("WAITING FOR SELECTION")
         self.action_label.setProperty("action", "neutral")
         self._refresh(self.action_label)
+
         self.reasons_label.setText(
-            "Your top recommendation and the strongest reasons will appear here."
+            "Select a candidate to generate a recommendation."
         )
-        self.alt_label.clear()
+        self.alt_label.setText("—")
 
     def set_running(self, player_count: int) -> None:
-        self.player_label.setText("Analyzing…")
-        self.meta_label.setText(f"Comparing {player_count} selected candidates.")
+        self._animate_refresh()
+        self.grade_label.setText("ANALYZING")
+        self.grade_label.setProperty("strength", "neutral")
+        self._refresh(self.grade_label)
+
+        self.player_label.setText("Comparing candidates…")
+        self.meta_label.setText(
+            f"Evaluating {player_count} selected "
+            f"{'player' if player_count == 1 else 'players'}."
+        )
         self.action_label.setText("RUNNING ANALYSIS")
         self.action_label.setProperty("action", "neutral")
         self._refresh(self.action_label)
@@ -930,42 +1047,82 @@ class DraftRoomAnalyticsPanel(QFrame):
             self.reset()
             return
 
+        self._animate_refresh()
+
         top = recommendations[0]
-        survival = top.survival_probability
-        survival_text = f"{survival:.0%}" if survival is not None else "N/A"
+        explanation = RecommendationExplanationBuilder.build(
+            top,
+            recommendations[1:],
+        )
+
+        self.grade_label.setText(
+            f"{'★' * explanation.stars}  {explanation.headline}"
+        )
+        self.grade_label.setProperty(
+            "strength",
+            self._strength_property(top.score),
+        )
+        self._refresh(self.grade_label)
+
+        self.confidence_label.setText(
+            f"CONFIDENCE {explanation.confidence_text}"
+        )
 
         self.player_label.setText(top.player_name)
-        self.meta_label.setText(
-            f"{top.position}  •  {top.grade}  •  "
-            f"{top.primary_strategy}  •  Confidence {top.confidence}%"
+
+        strategy = str(
+            getattr(top, "primary_strategy", "") or ""
+        ).strip()
+        meta_bits = [
+            str(top.position).upper(),
+            str(top.grade),
+        ]
+        if strategy:
+            meta_bits.append(strategy)
+        self.meta_label.setText("  •  ".join(meta_bits))
+
+        self.score_card.value_label.setText(explanation.score_text)
+        self.tier_card.value_label.setText(explanation.tier_text)
+        self.survival_card.value_label.setText(
+            explanation.survival_text
         )
-        self.score_card.value_label.setText(f"{top.score:.0f}/100")
-        self.survival_card.value_label.setText(survival_text)
-        self.cost_card.value_label.setText(f"{top.opportunity_cost:+.1f}")
-        self.fit_card.value_label.setText(
-            f"{top.roster_need} {top.roster_fit_score:+.0f}"
+        self.cost_card.value_label.setText(
+            explanation.pass_cost_text
         )
 
-        self.action_label.setText(top.action)
-        self.action_label.setProperty("action", self._action_property(top.action))
+        self.action_label.setText(explanation.action)
+        self.action_label.setProperty(
+            "action",
+            self._action_property(explanation.action),
+        )
         self._refresh(self.action_label)
 
-        top_reasons = tuple(top.reasons[:3])
         self.reasons_label.setText(
-            "\n".join(f"• {reason}" for reason in top_reasons)
-            if top_reasons
-            else "This player has the strongest overall recommendation profile."
+            "\n".join(
+                f"✓  {reason}"
+                for reason in explanation.reasons
+            )
+            if explanation.reasons
+            else "No strong differentiator was produced for this pick."
         )
 
-        alternatives = recommendations[1:4]
-        if alternatives:
-            alt_text = "   •   ".join(
-                f"#{index} {rec.player_name} ({rec.score:.0f})"
-                for index, rec in enumerate(alternatives, start=2)
-            )
-            self.alt_label.setText(f"NEXT:  {alt_text}")
-        else:
-            self.alt_label.clear()
+        self.alt_label.setText(
+            "\n".join(explanation.alternatives)
+            if explanation.alternatives
+            else "No additional analyzed candidates."
+        )
+
+    @staticmethod
+    def _strength_property(score: float) -> str:
+        if score >= 90:
+            return "elite"
+        if score >= 80:
+            return "strong"
+        if score >= 70:
+            return "good"
+        if score >= 60:
+            return "solid"
+        return "low"
 
     @staticmethod
     def _action_property(action: str) -> str:

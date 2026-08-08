@@ -44,6 +44,12 @@ QLabel#DraftRoomMetaTitle {
     letter-spacing: 1px;
 }
 
+QLabel#DraftRoomProgressPercent {
+    color: #cbd5e1;
+    font-size: 10px;
+    font-weight: 950;
+}
+
 QProgressBar#DraftRoomProgress {
     background-color: #202b3d;
     border: 0;
@@ -317,12 +323,16 @@ QTableWidget#DraftRoomPlayerTable::item {
 }
 
 QTableWidget#DraftRoomPlayerTable::item:selected {
-    background-color: #173a67;
+    background-color: #15365f;
     color: #ffffff;
+    border-top: 1px solid #2f78c4;
+    border-bottom: 1px solid #2f78c4;
+    border-left: 2px solid #38bdf8;
 }
 
-QTableWidget#DraftRoomPlayerTable::item:hover {
-    background-color: #172033;
+QTableWidget#DraftRoomPlayerTable::item:hover:!selected {
+    background-color: #182438;
+    color: #f8fafc;
 }
 
 QHeaderView::section {
@@ -406,6 +416,55 @@ QLabel#RosterTeam {
 }
 
 
+
+QLabel#AnalyticsGrade {
+    background-color: #172033;
+    border: 1px solid #334155;
+    border-radius: 7px;
+    color: #cbd5e1;
+    font-size: 9px;
+    font-weight: 950;
+    padding: 5px 8px;
+    letter-spacing: .4px;
+}
+
+QLabel#AnalyticsGrade[strength="elite"] {
+    background-color: #123022;
+    border-color: #22c55e;
+    color: #86efac;
+}
+
+QLabel#AnalyticsGrade[strength="strong"] {
+    background-color: #12324a;
+    border-color: #38bdf8;
+    color: #bae6fd;
+}
+
+QLabel#AnalyticsGrade[strength="good"] {
+    background-color: #3f3510;
+    border-color: #eab308;
+    color: #fde68a;
+}
+
+QLabel#AnalyticsGrade[strength="solid"] {
+    background-color: #422d15;
+    border-color: #f97316;
+    color: #fed7aa;
+}
+
+QLabel#AnalyticsGrade[strength="low"] {
+    background-color: #40202a;
+    border-color: #fb7185;
+    color: #fecdd3;
+}
+
+QLabel#AnalyticsConfidence {
+    color: #71839c;
+    font-size: 8px;
+    font-weight: 900;
+    letter-spacing: .6px;
+}
+
 QLabel#AnalyticsPlayer {
     color: #ffffff;
     font-size: 22px;
@@ -414,8 +473,8 @@ QLabel#AnalyticsPlayer {
 
 QFrame#AnalyticsMetricCard {
     background-color: #0d1421;
-    border: 1px solid #27364c;
-    border-radius: 8px;
+    border: 1px solid #2b3a50;
+    border-radius: 9px;
 }
 
 QLabel#AnalyticsMetricTitle {
@@ -467,15 +526,20 @@ QLabel#AnalyticsSectionTitle {
 }
 
 QLabel#AnalyticsReasons {
-    color: #d6e0ec;
+    color: #dce6f2;
     font-size: 10px;
-    font-weight: 750;
+    font-weight: 780;
+    line-height: 1.35;
 }
 
 QLabel#AnalyticsAlternatives {
-    color: #8ea0b8;
+    background-color: #0d1421;
+    border: 1px solid #243248;
+    border-radius: 7px;
+    color: #aebdd0;
     font-size: 9px;
     font-weight: 800;
+    padding: 7px 8px;
 }
 
 /* Scrollbars */

@@ -65,7 +65,7 @@ class DraftPickCard(QFrame):
         self.setProperty("hovered", "false")
         self.setMinimumSize(148, 82)
         self.setMaximumHeight(96)
-        self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
         self.setMouseTracking(True)
 
         self._pulse_timer = QTimer(self)
