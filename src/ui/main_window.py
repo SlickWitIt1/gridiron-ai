@@ -1,3 +1,4 @@
+import secrets
 import sys
 
 from PySide6.QtCore import QSize, QThread, QTimer, Qt
@@ -7,16 +8,18 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QHBoxLayout, QHeaderView, QLabel,
     QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMessageBox,
-    QPushButton, QSpinBox, QSplitter, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QPushButton, QSpinBox, QSplitter, QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from auto_recommendation import AutoRecommendationCandidateBuilder
+from draft_mode import DraftMode, LiveDraftController, MockDraftController
 from draft_session_store import DraftSessionStore
 from live_draft import LiveDraftSession
 from preferences import load_my_guys, normalize_name
 from ui.command_center_widget import CommandCenterWidget
 from ui.draft_board_dialog import DraftBoardDialog
 from ui.draft_pulse_widget import DraftPulseWidget
+from ui.home_hub import HomeHubWidget
 from ui.recommendation_worker import RecommendationWorker
 from ui.styles import DARK_STYLESHEET
 from ui.war_room_header import WarRoomHeader
@@ -58,6 +61,8 @@ class GridironWindow(QMainWindow):
 
         self.session: LiveDraftSession | None = None
         self.simulations = DEFAULT_SIMULATIONS
+        self.draft_mode = DraftMode.LIVE
+        self.draft_controller = None
 
         self.approved_players = load_my_guys()
 
@@ -117,11 +122,19 @@ class GridironWindow(QMainWindow):
         return QIcon(pixmap)
 
     def setup_ui(self) -> None:
-        central_widget = QWidget()
+        # Home Hub is now the real first page. The legacy War Room remains
+        # instantiated behind it because RecommendationWorker/CommandCenter/
+        # Draft Pulse still provide useful infrastructure while we migrate
+        # their best ideas into the Draft Room.
+        self.page_stack = QStackedWidget()
+        self.setCentralWidget(self.page_stack)
 
-        self.setCentralWidget(
-            central_widget
-        )
+        self.home_hub = HomeHubWidget()
+        self.page_stack.addWidget(self.home_hub)
+
+        central_widget = QWidget()
+        self.legacy_workspace = central_widget
+        self.page_stack.addWidget(central_widget)
 
         self.main_layout = QVBoxLayout(
             central_widget
@@ -189,6 +202,19 @@ class GridironWindow(QMainWindow):
         self.setup_left_panel()
         self.setup_middle_panel()
         self.setup_right_panel()
+
+        self.home_hub.live_draft_requested.connect(
+            self.start_live_draft_from_hub
+        )
+        self.home_hub.mock_draft_requested.connect(
+            self.start_mock_draft_from_hub
+        )
+        self.home_hub.resume_live_requested.connect(
+            self.resume_saved_draft
+        )
+        self.home_hub.active_draft_requested.connect(
+            self.open_draft_board
+        )
 
     def setup_actions(self) -> None:
         undo_action = QAction(
@@ -573,7 +599,12 @@ class GridironWindow(QMainWindow):
         )
 
     def show_start_screen(self) -> None:
+        if self.draft_controller is not None:
+            self.draft_controller.stop()
+        self.draft_controller = None
+
         self.session = None
+        self.page_stack.setCurrentWidget(self.home_hub)
         self.current_recommendations = []
         self.current_forecast = None
         self.pending_recommendation_candidates = None
@@ -636,43 +667,136 @@ class GridironWindow(QMainWindow):
             self.store.exists()
         )
 
-    def start_new_draft(self) -> None:
-        if self.store.exists():
+        self.home_hub.set_resume_available(self.store.exists())
+        self.home_hub.set_active_draft(mode_name=None)
+
+    def start_live_draft_from_hub(self, draft_slot: int) -> None:
+        self._start_draft(
+            draft_mode=DraftMode.LIVE,
+            draft_slot=draft_slot,
+        )
+
+    def start_mock_draft_from_hub(self, draft_slot: int) -> None:
+        self._start_draft(
+            draft_mode=DraftMode.MOCK,
+            draft_slot=draft_slot,
+        )
+
+    def _start_draft(
+        self,
+        *,
+        draft_mode: DraftMode,
+        draft_slot: int,
+    ) -> None:
+        if draft_mode is DraftMode.LIVE and self.store.exists():
             choice = QMessageBox.question(
                 self,
-                "Replace saved draft?",
+                "Replace saved Live Draft?",
                 (
-                    "A saved draft already exists. "
+                    "A saved Live Draft already exists. "
                     "Start over and replace it?"
                 ),
                 QMessageBox.StandardButton.Yes
                 | QMessageBox.StandardButton.No,
             )
-
             if choice != QMessageBox.StandardButton.Yes:
                 return
+            if self.draft_mode is DraftMode.LIVE:
+                self.store.delete()
 
-            self.store.delete()
+        if self.draft_controller is not None:
+            self.draft_controller.stop()
 
-        draft_slot = int(
-            self.slot_selector.currentText()
-        )
+        self.draft_mode = draft_mode
+        self.simulations = DEFAULT_SIMULATIONS
+        self.slot_selector.setCurrentText(str(draft_slot))
+        self.simulations_selector.setValue(self.simulations)
 
-        self.simulations = (
-            self.simulations_selector.value()
+        market_seed = (
+            0
+            if draft_mode is DraftMode.LIVE
+            else secrets.randbelow(1_000_000_000)
         )
 
         self.session = LiveDraftSession(
-            user_team_number=draft_slot
+            user_team_number=draft_slot,
+            market_seed=market_seed,
         )
 
+        self._configure_draft_controller()
         self.clear_recommendations()
-        self.save_active_session()
+        self._auto_analysis_pick = None
+
+        if draft_mode is DraftMode.LIVE:
+            self.save_active_session()
+
         self.refresh_draft_view()
+        self.open_draft_board()
 
         self.statusBar().showMessage(
-            f"New draft started from Slot {draft_slot}.",
+            f"{draft_mode.display_name} started from Slot {draft_slot}.",
             5000,
+        )
+
+        if isinstance(self.draft_controller, MockDraftController):
+            QTimer.singleShot(250, self.draft_controller.start)
+
+    def _configure_draft_controller(self) -> None:
+        if self.session is None:
+            self.draft_controller = None
+            return
+
+        if self.draft_mode is DraftMode.MOCK:
+            controller = MockDraftController(
+                self.session,
+                self,
+                delay_ms=180,
+            )
+            controller.pick_recorded.connect(
+                self._handle_mock_ai_pick
+            )
+            controller.user_turn_ready.connect(
+                self._handle_mock_user_turn_ready
+            )
+            controller.draft_complete.connect(
+                self._handle_mock_complete
+            )
+            self.draft_controller = controller
+        else:
+            self.draft_controller = LiveDraftController(
+                self.session,
+                self,
+            )
+
+    def _handle_mock_ai_pick(self, draft_pick) -> None:
+        # One session remains authoritative. The controller simply feeds the
+        # existing session the AI pick, then every normal UI/analytics layer
+        # refreshes from that same state.
+        self.clear_recommendations()
+        self._auto_analysis_pick = None
+        self.refresh_draft_view()
+        self.statusBar().showMessage(
+            f"Mock AI: Team {draft_pick.team_number} selected "
+            f"{draft_pick.player.name}.",
+            1500,
+        )
+
+    def _handle_mock_user_turn_ready(self) -> None:
+        self._auto_analysis_pick = None
+        self.refresh_draft_view()
+        self.statusBar().showMessage(
+            "Your mock pick — Gridiron AI is evaluating the board.",
+            3000,
+        )
+
+    def _handle_mock_complete(self) -> None:
+        self.refresh_draft_view()
+        self.statusBar().showMessage("Mock draft complete.", 5000)
+
+    def start_new_draft(self) -> None:
+        self._start_draft(
+            draft_mode=DraftMode.LIVE,
+            draft_slot=int(self.slot_selector.currentText()),
         )
 
     def resume_saved_draft(self) -> None:
@@ -683,6 +807,7 @@ class GridironWindow(QMainWindow):
                 "simulations"
             ]
 
+            self.draft_mode = DraftMode.LIVE
             self.session = LiveDraftSession(
                 user_team_number=saved_data[
                     "draft_slot"
@@ -690,7 +815,9 @@ class GridironWindow(QMainWindow):
                 completed_player_names=saved_data[
                     "drafted_player_names"
                 ],
+                market_seed=0,
             )
+            self._configure_draft_controller()
 
         except (
             FileNotFoundError,
@@ -715,7 +842,9 @@ class GridironWindow(QMainWindow):
         )
 
         self.clear_recommendations()
+        self._auto_analysis_pick = None
         self.refresh_draft_view()
+        self.open_draft_board()
 
         self.statusBar().showMessage(
             (
@@ -749,7 +878,10 @@ class GridironWindow(QMainWindow):
         )
 
     def save_active_session(self) -> None:
-        if self.session is None:
+        if (
+            self.session is None
+            or self.draft_mode is not DraftMode.LIVE
+        ):
             return
 
         self.store.save(
@@ -835,6 +967,13 @@ class GridironWindow(QMainWindow):
 
         self.delete_save_button.setEnabled(
             self.store.exists()
+        )
+
+        self.home_hub.set_resume_available(self.store.exists())
+        self.home_hub.set_active_draft(
+            mode_name=self.draft_mode.display_name,
+            slot=self.session.user_team_number,
+            current_pick=self.session.current_pick,
         )
 
         self._maybe_start_auto_recommendation()
@@ -1096,6 +1235,16 @@ class GridironWindow(QMainWindow):
         if self.session is None:
             return
 
+        if (
+            self.draft_mode is DraftMode.MOCK
+            and not self.session.is_user_turn
+        ):
+            self.statusBar().showMessage(
+                "Mock AI is making the opponent picks.",
+                2000,
+            )
+            return
+
         team_number = (
             self.session.current_team_number
         )
@@ -1147,6 +1296,16 @@ class GridironWindow(QMainWindow):
 
         self.refresh_draft_view()
 
+        if (
+            is_user_pick
+            and isinstance(self.draft_controller, MockDraftController)
+            and not self.session.is_complete
+        ):
+            QTimer.singleShot(
+                250,
+                self.draft_controller.advance_until_user_turn,
+            )
+
         self.statusBar().showMessage(
             (
                 f"Pick {draft_pick.overall}: "
@@ -1158,6 +1317,9 @@ class GridironWindow(QMainWindow):
         )
 
     def undo_last_pick(self) -> None:
+        if isinstance(self.draft_controller, MockDraftController):
+            self.draft_controller.stop()
+
         if (
             self.session is None
             or not self.session.draft_results
@@ -1180,6 +1342,9 @@ class GridironWindow(QMainWindow):
         )
 
     def redo_last_pick(self) -> None:
+        if isinstance(self.draft_controller, MockDraftController):
+            self.draft_controller.stop()
+
         if self.session is None or not self.session.can_redo:
             return
 
@@ -1519,6 +1684,10 @@ class GridironWindow(QMainWindow):
             self.draft_board_dialog.analyze_players_requested.connect(
                 self.analyze_players_from_draft_room
             )
+
+        self.draft_board_dialog.setWindowTitle(
+            f"Gridiron AI — {self.draft_mode.display_name} Room"
+        )
 
         self.draft_board_dialog.refresh_board(
             session=self.session,

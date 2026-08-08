@@ -18,6 +18,7 @@ class LiveDraftSession:
             str,
             ...,
         ] = (),
+        market_seed: int | None = 0,
     ) -> None:
         if not 1 <= user_team_number <= 10:
             raise ValueError(
@@ -39,7 +40,7 @@ class LiveDraftSession:
 
         self.market = DraftMarket(
             players=self.players,
-            seed=0,
+            seed=market_seed,
         )
 
         self.state = DraftState(
